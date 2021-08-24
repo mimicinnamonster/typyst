@@ -1801,7 +1801,7 @@ csihandle(void)
 	case ' ':
 		switch (csiescseq.mode[1]) {
 		case 'q': /* DECSCUSR -- Set Cursor Style */
-			if (xsetcursor(csiescseq.arg[0]))
+			if (setcursor(csiescseq.arg[0]))
 				goto unknown;
 			break;
 		default:
@@ -1856,7 +1856,7 @@ strhandle(void)
 		switch (par) {
 		case 0:
 			if (narg > 1) {
-				xsettitle(strescseq.args[1]);
+				settitle(strescseq.args[1]);
 				xseticontitle(strescseq.args[1]);
 			}
 			return;
@@ -1866,14 +1866,14 @@ strhandle(void)
 			return;
 		case 2:
 			if (narg > 1)
-				xsettitle(strescseq.args[1]);
+				settitle(strescseq.args[1]);
 			return;
 		case 52:
 			if (narg > 2 && allowwindowops) {
 				dec = base64dec(strescseq.args[2]);
 				if (dec) {
 					xsetsel(dec);
-					xclipcopy();
+					clipcopy();
 				} else {
 					fprintf(stderr, "erresc: invalid base64\n");
 				}
@@ -1902,7 +1902,7 @@ strhandle(void)
 		}
 		break;
 	case 'k': /* old title set compatibility */
-		xsettitle(strescseq.args[0]);
+		settitle(strescseq.args[0]);
 		return;
 	case 'P': /* DCS -- Device Control String */
 	case '_': /* APC -- Application Program Command */
@@ -2141,7 +2141,7 @@ tcontrolcode(uchar ascii)
 			/* backwards compatibility to xterm */
 			strhandle();
 		} else {
-			xbell();
+			bell();
 		}
 		break;
 	case '\033': /* ESC */
@@ -2275,7 +2275,7 @@ eschandle(uchar ascii)
 	case 'c': /* RIS -- Reset to initial state */
 		treset();
 		resettitle();
-		xloadcols();
+		loadcols();
 		break;
 	case '=': /* DECPAM -- Application keypad */
 		xsetmode(1, MODE_APPKEYPAD);
@@ -2556,7 +2556,7 @@ tresize(int col, int row)
 void
 resettitle(void)
 {
-	xsettitle(NULL);
+	settitle(NULL);
 }
 
 void
@@ -2569,7 +2569,7 @@ drawregion(int x1, int y1, int x2, int y2)
 			continue;
 
 		term.dirty[y] = 0;
-		xdrawline(term.line[y], x1, y, x2);
+		drawline(term.line[y], x1, y, x2);
 	}
 }
 
@@ -2578,7 +2578,7 @@ draw(void)
 {
 	int cx = term.c.x, ocx = term.ocx, ocy = term.ocy;
 
-	if (!xstartdraw())
+	if (!startdraw())
 		return;
 
 	/* adjust cursor position */
@@ -2590,13 +2590,11 @@ draw(void)
 		cx--;
 
 	drawregion(0, 0, term.col, term.row);
-	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
+	drawcursor(cx, term.c.y, term.line[term.c.y][cx],
 			term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
 	term.ocx = cx;
 	term.ocy = term.c.y;
-	xfinishdraw();
-	if (ocx != term.ocx || ocy != term.ocy)
-		xximspot(term.ocx, term.ocy);
+	finishdraw();
 }
 
 void

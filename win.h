@@ -23,18 +23,18 @@ enum win_mode {
 	                  |MODE_MOUSEMANY,
 };
 
-void xbell(void);
-void xclipcopy(void);
-void xdrawcursor(int, int, Glyph, int, int, Glyph);
-void xdrawline(Line, int, int, int);
-void xfinishdraw(void);
-void xloadcols(void);
+void bell(void);
+void clipcopy(void);
+void drawcursor(int, int, Glyph, int, int, Glyph);
+void drawline(Line, int, int, int);
+void finishdraw(void);
+void loadcols(void);
 int xsetcolorname(int, const char *);
 void xseticontitle(char *);
-void xsettitle(char *);
-int xsetcursor(int);
+void settitle(char *);
+int setcursor(int);
 void xsetmode(int, unsigned int);
 void xsetpointermotion(int);
 void xsetsel(char *);
-int xstartdraw(void);
+int startdraw(void);
 void xximspot(int, int);

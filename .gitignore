@@ -1,3 +1,5 @@
 st
 *.o
 debian
+sdl2
+sdl2_ttf
