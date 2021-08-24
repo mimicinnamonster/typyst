@@ -14,6 +14,8 @@
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <X11/XKBlib.h>
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_ttf.h>
 
 char *argv0;
 #include "arg.h"
@@ -117,6 +119,11 @@ typedef struct {
 	struct timespec tclick2;
 } XSelection;
 
+typedef struct {
+	SDL_Window *wnd;
+	SDL_Surface* srf;
+} SDLWindow;
+
 /* Font structure */
 #define Font Font_
 typedef struct {
@@ -219,6 +226,7 @@ static void (*handler[LASTEvent])(XEvent *) = {
 /* Globals */
 static DC dc;
 static XWindow xw;
+static SDLWindow sdlw;
 static XSelection xsel;
 static TermWindow win;
 
@@ -2010,6 +2018,8 @@ usage(void)
 	    " [stty_args ...]\n", argv0, argv0);
 }
 
+#include "./sdl.c"
+
 int
 main(int argc, char *argv[])
 {
@@ -2076,10 +2086,16 @@ run:
 	cols = MAX(cols, 1);
 	rows = MAX(rows, 1);
 	tnew(cols, rows);
-	xinit(cols, rows);
+
+	sdlinit();
+	
+	//xinit(cols, rows);
+	/*
 	xsetenv();
 	selinit();
 	run();
-
+	sdlexit();
+	*/
+	
 	return 0;
 }

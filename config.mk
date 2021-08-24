@@ -15,10 +15,17 @@ PKG_CONFIG = pkg-config
 # includes and libs
 INCS = -I$(X11INC) \
        `$(PKG_CONFIG) --cflags fontconfig` \
-       `$(PKG_CONFIG) --cflags freetype2`
+       `$(PKG_CONFIG) --cflags freetype2` \
+       `./sdl2/install/bin/sdl2-config --cflags`
+
+# `$(PKG_CONFIG) --cflags sdl2`
+
 LIBS = -L$(X11LIB) -lm -lrt -lX11 -lutil -lXft -lXrender\
        `$(PKG_CONFIG) --libs fontconfig` \
-       `$(PKG_CONFIG) --libs freetype2`
+       `$(PKG_CONFIG) --libs freetype2` \
+       `./sdl2/install/bin/sdl2-config --libs` -lSDL2_ttf
+
+#`$(PKG_CONFIG) --libs sdl2` -lSDL2_ttf
 
 # flags
 STCPPFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600
