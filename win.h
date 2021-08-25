@@ -24,17 +24,15 @@ enum win_mode {
 };
 
 void bell(void);
-void clipcopy(void);
+void clipcopy(const Arg *dummy);
 void drawcursor(int, int, Glyph, int, int, Glyph);
 void drawline(Line, int, int, int);
 void finishdraw(void);
 void loadcols(void);
-int xsetcolorname(int, const char *);
-void xseticontitle(char *);
+int setcolorname(int, const char *);
 void settitle(char *);
 int setcursor(int);
-void xsetmode(int, unsigned int);
+void setmode(int, unsigned int);
 void xsetpointermotion(int);
-void xsetsel(char *);
+void setsel(char *);
 int startdraw(void);
-void xximspot(int, int);

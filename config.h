@@ -153,37 +153,10 @@ static unsigned int cols = 100;
 static unsigned int rows = 30;
 
 /*
- * Default colour and shape of the mouse cursor
- */
-static unsigned int mouseshape = XC_xterm;
-static unsigned int mousefg = 7;
-static unsigned int mousebg = 0;
-
-/*
  * Color used to display font attributes when fontconfig selected a font which
  * doesn't match the ones requested.
  */
 static unsigned int defaultattr = 11;
-
-/*
- * Force mouse select/shortcuts while mask is active (when MODE_MOUSE is set).
- * Note that if you want to use ShiftMask with selmasks, set this to an other
- * modifier, set to 0 to not use it.
- */
-static uint forcemousemod = ShiftMask;
-
-/*
- * Internal mouse shortcuts.
- * Beware that overloading Button1 will disable the selection.
- */
-static MouseShortcut mshortcuts[] = {
-	/* mask                 button   function        argument       release */
-	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
-	{ ShiftMask,            Button4, ttysend,        {.s = "\033[5;2~"} },
-	{ XK_ANY_MOD,           Button4, ttysend,        {.s = "\031"} },
-	{ ShiftMask,            Button5, ttysend,        {.s = "\033[6;2~"} },
-	{ XK_ANY_MOD,           Button5, ttysend,        {.s = "\005"} },
-};
 
 /* Internal keyboard shortcuts. */
 #define MODKEY Mod1Mask
