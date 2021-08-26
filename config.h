@@ -1,3 +1,10 @@
+typedef struct {
+	unsigned char red;
+	unsigned char green;
+	unsigned char blue;
+	unsigned char alpha;
+} RenderColor;
+
 /* See LICENSE file for copyright and license details. */
 
 /*
@@ -98,32 +105,29 @@ unsigned int tabspaces = 8;
 float alpha = 0.8;
 
 /* Terminal colors (16 first used in escape sequence) */
-static const char *colorname[] = {
+static const RenderColor colorname[] = {
 	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray90",
+	(RenderColor){ .red = 0, .green = 0, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 170, .green = 0, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 0, .green = 170, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 170, .green = 85, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 0, .green = 0, .blue = 170, .alpha = 255 },
+	(RenderColor){ .red = 170, .green = 0, .blue = 170, .alpha = 255 },
+	(RenderColor){ .red = 0, .green = 170, .blue = 170, .alpha = 255 },
+	(RenderColor){ .red = 170, .green = 170, .blue = 170, .alpha = 255 },
 
 	/* 8 bright colors */
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
-
-	[255] = 0,
+	(RenderColor){ .red = 85, .green = 85, .blue = 85, .alpha = 255 },
+	(RenderColor){ .red = 255, .green = 85, .blue = 85, .alpha = 255 },
+	(RenderColor){ .red = 85, .green = 255, .blue = 85, .alpha = 255 },
+	(RenderColor){ .red = 255, .green = 255, .blue = 85, .alpha = 255 },
+	(RenderColor){ .red = 85, .green = 85, .blue = 255, .alpha = 255 },
+	(RenderColor){ .red = 255, .green = 85, .blue = 255, .alpha = 255 },
+	(RenderColor){ .red = 85, .green = 255, .blue = 255, .alpha = 255 },
+	(RenderColor){ .red = 255, .green = 255, .blue = 255, .alpha = 255 },
 
 	/* more colors can be added after 255 to use with DefaultXX */
-	"#cccccc",
-	"#555555",
+	[255] = 0,
 };
 
 

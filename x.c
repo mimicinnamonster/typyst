@@ -68,13 +68,6 @@ static void ttysend(const Arg *);
 
 typedef unsigned int Color;
 
-typedef struct {
-	unsigned char red;
-	unsigned char green;
-	unsigned char blue;
-	unsigned char alpha;
-} RenderColor;
-
 /* Purely graphic info */
 typedef struct {
 	int tw, th; /* tty width and height */
@@ -360,8 +353,12 @@ loadcolor(int i, const char *name, RenderColor *color)
 				color->red = 0x0808 + 0x0a0a * (i - (6*6*6+16));
 				color->green = color->blue = color->red;
 			}
-		} else
-			name = colorname[i];
+		} else {
+			color->alpha = colorname[i].alpha;
+			color->red = colorname[i].red;
+			color->green = colorname[i].green;
+			color->blue = colorname[i].blue;
+		}
 	}
 
 	return 1;
@@ -379,17 +376,13 @@ loadcols(void)
 		dc.col = xmalloc(dc.collen * sizeof(Color));
 	}
 
-	for (i = 0; i < dc.collen; i++)
-		if (!loadcolor(i, NULL, &dc.col[i])) {
-			if (colorname[i])
-				die("could not allocate color '%s'\n", colorname[i]);
-			else
-				die("could not allocate color %d\n", i);
-		}
+	for (i = 0; i < dc.collen; i++) {
+		loadcolor(i, NULL, &dc.col[i]);
+	}
 
 	/* set alpha value of bg color */
 	if (opt_alpha) alpha = strtof(opt_alpha, NULL);
-	dc.col[defaultbg] = (RenderColor){255, 255, 255, 255 * alpha};
+	dc.col[defaultbg].alpha = 255 * alpha;
 	loaded = 1;
 }
 
@@ -416,7 +409,7 @@ void
 clear(int x1, int y1, int x2, int y2)
 {
 	RenderColor col = dc.col[IS_SET(MODE_REVERSE)? defaultfg : defaultbg];
-	//SDL_FillRect(sdlw.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(sdlw.srf->format, col.red, col.green, col.blue));
+	SDL_FillRect(sdlw.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(sdlw.srf->format, col.red, col.green, col.blue));
 }
 
 int
@@ -722,8 +715,6 @@ _drawglyph(Glyph base, int len, int x, int y)
 	r.width = width;
 	*/
 
-	printf("color: %d %d %d\n", fg->red, fg->blue, fg->green);
-	
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){x * width, y * win.ch, width, win.ch});
 
@@ -741,6 +732,8 @@ drawglyph(Glyph g, int x, int y)
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 {
+	// TODO: drawcursor
+	return;
 	RenderColor drawcol;
 
 	/* remove the old cursor */
