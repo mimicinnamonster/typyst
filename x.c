@@ -116,6 +116,7 @@ typedef struct {
 static inline ushort sixd_to_16bit(int);
 static void _drawglyph(Glyph, int, int, int);
 static void drawglyph(Glyph, int, int);
+static void _clear(int, int, int, int, RenderColor *);
 static void clear(int, int, int, int);
 static int xgeommasktogravity(int);
 static void init();
@@ -402,14 +403,17 @@ setcolorname(int x, const char *name)
 	return 0;
 }
 
-/*
- * Absolute coordinates.
- */
+void
+_clear(int x1, int y1, int x2, int y2, RenderColor *col)
+{
+	SDL_FillRect(sdlw.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(sdlw.srf->format, col->red, col->green, col->blue));
+}
+
 void
 clear(int x1, int y1, int x2, int y2)
 {
-	RenderColor col = dc.col[IS_SET(MODE_REVERSE)? defaultfg : defaultbg];
-	SDL_FillRect(sdlw.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(sdlw.srf->format, col.red, col.green, col.blue));
+	int idx = IS_SET(MODE_REVERSE)? defaultfg : defaultbg;
+	_clear(x1, y1, x2, y2, &dc.col[idx]);
 }
 
 int
@@ -610,6 +614,8 @@ init()
 void
 _drawglyph(Glyph base, int len, int x, int y)
 {
+	printf("c: %lc, x: %d, y: %d, fg: %d, bg: %d\n", base.u, x, y, base.fg, base.bg);
+
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 	int winx = borderpx + x * win.cw, winy = borderpx + y * win.ch,
 			width = charlen * win.cw;
@@ -707,6 +713,9 @@ _drawglyph(Glyph base, int len, int x, int y)
 	if (winy + win.ch >= borderpx + win.th)
 		clear(winx, winy + win.ch, winx + width, win.h);
 
+  /* Clean up the region we want to draw to. */
+  _clear(winx, winy, winx+width, winy+win.ch, bg);
+
 	/* Set the clip region because Xft is sometimes dirty. */
 	/*
 	r.x = 0;
@@ -716,7 +725,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 	*/
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
-	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){x * width, y * win.ch, width, win.ch});
+	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){winx, winy, width, win.ch});
 
 	// TODO: underline, strikethrough
 }
