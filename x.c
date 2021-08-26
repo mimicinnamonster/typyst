@@ -56,10 +56,6 @@ static void ttysend(const Arg *);
 /* config.h for applying patches and the configuration. */
 #include "config.h"
 
-/* XEMBED messages */
-#define XEMBED_FOCUS_IN	4
-#define XEMBED_FOCUS_OUT 5
-
 /* macros */
 #define IS_SET(flag)		((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 8)
@@ -110,7 +106,6 @@ typedef struct {
 	RenderColor *col;
 	size_t collen;
 	Font font, bfont, ifont, ibfont;
-	GC gc;
 } DC;
 
 static inline ushort sixd_to_16bit(int);
@@ -128,33 +123,23 @@ static int loadfont(Font *, FcPattern *);
 static void loadfonts(const char *, double);
 static void unloadfont(Font *);
 static void unloadfonts(void);
-static int evcol(XEvent *);
-static int evrow(XEvent *);
+static int evcol(SDL_Event *);
+static int evrow(SDL_Event *);
 
-static void expose(XEvent *);
-static void visibility(XEvent *);
-static void unmap(XEvent *);
-static void kpress(XEvent *);
-static void cmessage(XEvent *);
-static void _resize(XEvent *);
-static void focus();
+static void handle_keypress(SDL_Event *);
+static void handle_expose(SDL_Event *);
+static void handle_visibility(SDL_Event *);
+static void handle_unmap(SDL_Event *);
+static void handle_window(SDL_Event *);
+static void handle_resize(SDL_Event *);
+static void handle_focus();
+
 static void _setsel(char *, Time);
 static char *kmap(KeySym, uint);
 static int match(uint, uint);
 
 static void run(void);
 static void usage(void);
-
-static void (*handler[LASTEvent])(XEvent *) = {
-	[KeyPress] = kpress,
-	//[ClientMessage] = cmessage,
-	[ConfigureNotify] = _resize,
-	[VisibilityNotify] = visibility,
-	[UnmapNotify] = unmap,
-	[Expose] = expose,
-	//[FocusIn] = focus,
-	//[FocusOut] = focus,
-};
 
 /* Globals */
 static DC dc;
@@ -262,27 +247,27 @@ ttysend(const Arg *arg)
 }
 
 int
-evcol(XEvent *e)
+evcol(SDL_Event *e)
 {
 	// TODO: evcol
 	return 0;
 }
 
 int
-evrow(XEvent *e)
+evrow(SDL_Event *e)
 {
 	// TODO: evrow
 	return 0;
 }
 
 void
-selnotify(XEvent *e)
+selnotify(SDL_Event *e)
 {
 	// TODO: selnotify
 }
 
 void
-selrequest(XEvent *e)
+selrequest(SDL_Event *e)
 {
 	// TODO: selrequest
 }
@@ -551,16 +536,6 @@ unloadfonts(void)
 	unloadfont(&dc.ibfont);
 }
 
-int
-finit()
-{
-	//Destroy window
-	SDL_DestroyWindow(sdlw.wnd);
-
-	//Quit SDL subsystems
-	SDL_Quit();
-}
-
 void
 init()
 {
@@ -696,7 +671,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
-  _clear(winx, winy, winx+width, winy+win.ch, bg);
+	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){winx, winy, width, win.ch});
@@ -715,10 +690,10 @@ drawglyph(Glyph g, int x, int y)
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 {
-  int tmp = g.fg;
-  g.fg = g.bg;
-  g.bg = tmp;
-  drawglyph(g, cx, cy);
+	int tmp = g.fg;
+	g.fg = g.bg;
+	g.bg = tmp;
+	drawglyph(g, cx, cy);
 }
 
 void
@@ -764,31 +739,29 @@ drawline(Line line, int x1, int y1, int x2)
 void
 finishdraw(void)
 {
-	/*
+	#if 0
 	XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, win.w,
 			win.h, 0, 0);
 	XSetForeground(xw.dpy, dc.gc,
 			dc.col[IS_SET(MODE_REVERSE)?
 				defaultfg : defaultbg].pixel);
-	*/
+	#endif
 }
 
 void
-expose(XEvent *ev)
+handle_expose(SDL_Event *ev)
 {
 	redraw();
 }
 
 void
-visibility(XEvent *ev)
+handle_visibility(SDL_Event *ev)
 {
-	XVisibilityEvent *e = &ev->xvisibility;
-
-	MODBIT(win.mode, e->state != VisibilityFullyObscured, MODE_VISIBLE);
+	// TODO: MODBIT(win.mode, e->state != handle_visibilityFullyObscured, MODE_VISIBLE);
 }
 
 void
-unmap(XEvent *ev)
+handle_unmap(SDL_Event *ev)
 {
 	win.mode &= ~MODE_VISIBLE;
 }
@@ -818,20 +791,20 @@ bell(void)
 }
 
 void
-focus()
+handle_focus()
 {
 	#if 0
-	if (ev->type == FocusIn) {
+	if (ev->type == handle_focusIn) {
 		if (xw.ime.xic)
-			XSetICFocus(xw.ime.xic);
-		win.mode |= MODE_FOCUSED;
-		if (IS_SET(MODE_FOCUS))
+			XSetIChandle_focus(xw.ime.xic);
+		win.mode |= MODE_handle_focusED;
+		if (IS_SET(MODE_handle_focus))
 			ttywrite("\033[I", 3, 0);
 	} else {
 		if (xw.ime.xic)
-			XUnsetICFocus(xw.ime.xic);
-		win.mode &= ~MODE_FOCUSED;
-		if (IS_SET(MODE_FOCUS))
+			XUnsetIChandle_focus(xw.ime.xic);
+		win.mode &= ~MODE_handle_focusED;
+		if (IS_SET(MODE_handle_focus))
 			ttywrite("\033[O", 3, 0);
 	}
 	#endif
@@ -881,9 +854,11 @@ kmap(KeySym k, uint state)
 }
 
 void
-kpress(XEvent *ev)
+handle_keypress(SDL_Event *ev)
 {
+	#if 0
 	XKeyEvent *e = &ev->xkey;
+	
 	KeySym ksym;
 	char buf[64], *customkey;
 	int len;
@@ -931,54 +906,76 @@ kpress(XEvent *ev)
 		}
 	}
 	ttywrite(buf, len, 1);
+	#endif
 }
 
 void
-_resize(XEvent *e)
+handle_resize(SDL_Event *e)
 {
+	#if 0
 	if (e->xconfigure.width == win.w && e->xconfigure.height == win.h)
 		return;
-
 	cresize(e->xconfigure.width, e->xconfigure.height);
+	#endif
 }
 
 void
 run()
 {
+	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 60 };
+
+  SDL_Event event;
 	int w = win.w, h = win.h;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-	struct timespec seltv, *tv, now;
-	double timeout = -1;
 
 	cresize(w, h);
 
 	while (1) {
-
 		FD_ZERO(&rfd);
 		FD_SET(ttyfd, &rfd);
 
-		seltv.tv_sec = timeout / 1E3;
-		seltv.tv_nsec = 1E6 * (timeout - 1E3 * seltv.tv_sec);
-		tv = timeout >= 0 ? &seltv : NULL;
+    // tty events
+    {
+      if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
+        if (errno == EINTR) continue;
+        die("select failed: %s\n", strerror(errno));
+      }
+      if (FD_ISSET(ttyfd, &rfd)) ttyread();
+    }
 
-		if (pselect(ttyfd+1, &rfd, NULL, NULL, tv, NULL) < 0) {
-			if (errno == EINTR)
-				continue;
-			die("select failed: %s\n", strerror(errno));
+    // host events
+		while (SDL_PollEvent(&event)) {
+			printf("event %d, wanted %d\n", event.type, SDL_WINDOWEVENT);
+			switch(event.type) {
+
+				case SDL_WINDOWEVENT: 
+						switch(event.window.event) {
+							case SDL_WINDOWEVENT_CLOSE:
+                die("");
+								break;
+						}
+					break;
+
+        case SDL_KEYDOWN: 
+        case SDL_KEYUP: 
+            //handle_keypress(event);
+					break;
+
+				//[SDL_KeyboardEvent] = handle_keypress,
+				//[SDL_WindowEvent] = handle_window,
+				//[SDL_WindowEvent] = handle_resize,
+				//[SDL_WindowEvent] = handle_focus,
+				//[SDL_WindowEvent] = handle_visibility,
+				//[SDL_WindowEvent] = handle_unmap,
+				//[SDL_WindowEvent] = handle_expose,
+			}
 		}
-		clock_gettime(CLOCK_MONOTONIC, &now);
-
-		if (FD_ISSET(ttyfd, &rfd))
-			ttyread();
-
-		// TODO: handler[event.type](&event)
 
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		draw();
 		SDL_UpdateWindowSurface(sdlw.wnd);
-
 	}
 }
 
@@ -1054,7 +1051,6 @@ run:
 
 	init();
 	run();
-	finit();
 	
 	return 0;
 }
