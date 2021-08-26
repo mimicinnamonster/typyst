@@ -854,16 +854,27 @@ kmap(KeySym k, uint state)
 }
 
 void
+handle_window(SDL_Event *ev)
+{
+  switch(ev->window.event) {
+    case SDL_WINDOWEVENT_CLOSE:
+      die("");
+      break;
+  }
+}
+
+void
 handle_keypress(SDL_Event *ev)
 {
-	#if 0
-	XKeyEvent *e = &ev->xkey;
-	
-	KeySym ksym;
-	char buf[64], *customkey;
+  // printf("keycode: %d, state: %d\n", ev->key.keysym.sym, ev->key.state);
+  
+  if (ev->key.state == SDL_RELEASED) return;
+
+  char buf[64] = { ev->key.keysym.sym };
 	int len;
 	Rune c;
-	Status status;
+
+	#if 0
 	Shortcut *bp;
 
 	if (IS_SET(MODE_KBDLOCK))
@@ -889,24 +900,23 @@ handle_keypress(SDL_Event *ev)
 		ttywrite(customkey, strlen(customkey), 1);
 		return;
 	}
+	#endif
 
 	/* 3. composed string from input method */
-	if (len == 0)
-		return;
-	if (len == 1 && e->state & Mod1Mask) {
-		if (IS_SET(MODE_8BIT)) {
+	{
+    len = 1;
+    if (IS_SET(MODE_8BIT)) {
 			if (*buf < 0177) {
 				c = *buf | 0x80;
 				len = utf8encode(c, buf);
 			}
 		} else {
-			buf[1] = buf[0];
-			buf[0] = '\033';
-			len = 2;
+      //buf[1] = buf[0];
+      //buf[0] = '\033';
+      //len = 2;
 		}
 	}
 	ttywrite(buf, len, 1);
-	#endif
 }
 
 void
@@ -946,20 +956,14 @@ run()
 
     // host events
 		while (SDL_PollEvent(&event)) {
-			printf("event %d, wanted %d\n", event.type, SDL_WINDOWEVENT);
 			switch(event.type) {
-
 				case SDL_WINDOWEVENT: 
-						switch(event.window.event) {
-							case SDL_WINDOWEVENT_CLOSE:
-                die("");
-								break;
-						}
+            handle_window(&event);
 					break;
 
         case SDL_KEYDOWN: 
         case SDL_KEYUP: 
-            //handle_keypress(event);
+            handle_keypress(&event);
 					break;
 
 				//[SDL_KeyboardEvent] = handle_keypress,
@@ -972,7 +976,7 @@ run()
 			}
 		}
 
-		MODBIT(win.mode, 1, MODE_VISIBLE);
+    MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		draw();
 		SDL_UpdateWindowSurface(sdlw.wnd);
