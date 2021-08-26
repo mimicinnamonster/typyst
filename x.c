@@ -614,8 +614,6 @@ init()
 void
 _drawglyph(Glyph base, int len, int x, int y)
 {
-	printf("c: %lc, x: %d, y: %d, fg: %d, bg: %d\n", base.u, x, y, base.fg, base.bg);
-
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 	int winx = borderpx + x * win.cw, winy = borderpx + y * win.ch,
 			width = charlen * win.cw;
@@ -708,21 +706,16 @@ _drawglyph(Glyph base, int len, int x, int y)
 		clear(winx + width, (y == 0)? 0 : winy, win.w,
 			((winy + win.ch >= borderpx + win.th)? win.h : (winy + win.ch)));
 	}
+
+  /*
 	if (y == 0)
 		clear(winx, 0, winx + width, borderpx);
 	if (winy + win.ch >= borderpx + win.th)
 		clear(winx, winy + win.ch, winx + width, win.h);
+  */
 
-  /* Clean up the region we want to draw to. */
+
   _clear(winx, winy, winx+width, winy+win.ch, bg);
-
-	/* Set the clip region because Xft is sometimes dirty. */
-	/*
-	r.x = 0;
-	r.y = 0;
-	r.height = win.ch;
-	r.width = width;
-	*/
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){winx, winy, width, win.ch});
@@ -741,84 +734,10 @@ drawglyph(Glyph g, int x, int y)
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 {
-	// TODO: drawcursor
-	return;
-	RenderColor drawcol;
-
-	/* remove the old cursor */
-	if (selected(ox, oy))
-		og.mode ^= ATTR_REVERSE;
-	drawglyph(og, ox, oy);
-
-	if (IS_SET(MODE_HIDE))
-		return;
-
-	/*
-	 * Select the right color for the right mode.
-	 */
-	g.mode &= ATTR_BOLD|ATTR_ITALIC|ATTR_UNDERLINE|ATTR_STRUCK|ATTR_WIDE;
-
-	if (IS_SET(MODE_REVERSE)) {
-		g.mode |= ATTR_REVERSE;
-		g.bg = defaultfg;
-		if (selected(cx, cy)) {
-			drawcol = dc.col[defaultcs];
-			g.fg = defaultrcs;
-		} else {
-			drawcol = dc.col[defaultrcs];
-			g.fg = defaultcs;
-		}
-	} else {
-		if (selected(cx, cy)) {
-			g.fg = defaultfg;
-			g.bg = defaultrcs;
-		} else {
-			g.fg = defaultbg;
-			g.bg = defaultcs;
-		}
-		drawcol = dc.col[g.bg];
-	}
-
-	switch (win.cursor) {
-		case 7: /* st extension */
-			g.u = 0x2603; /* snowman (U+2603) */
-			/* FALLTHROUGH */
-		case 0: /* Blinking Block */
-		case 1: /* Blinking Block (Default) */
-		case 2: /* Steady Block */
-			drawglyph(g, cx, cy);
-			break;
-		case 3: /* Blinking Underline */
-		case 4: /* Steady Underline */
-			/*
-			SDL_FillRect(
-				sdlw.srf, 
-				&(SDL_Rect) {
-					borderpx + cx * win.cw,
-					borderpx + (cy + 1) * win.ch - cursorthickness,
-					win.cw,
-					cursorthickness
-				},
-				SDL_MapRGBA(sdlw.srf->format, drawcol.red, drawcol.green, drawcol.blue, drawcol.alpha)
-			);
-			*/
-			break;
-		case 5: /* Blinking bar */
-		case 6: /* Steady bar */
-			/*
-			SDL_FillRect(
-				sdlw.srf, 
-				&(SDL_Rect) {
-					borderpx + cx * win.cw,
-					borderpx + cy * win.ch,
-					cursorthickness,
-					win.ch
-				},
-				SDL_MapRGBA(sdlw.srf->format, drawcol.red, drawcol.green, drawcol.blue, drawcol.alpha)
-			);
-			*/
-			break;
-	}
+  int tmp = g.fg;
+  g.fg = g.bg;
+  g.bg = tmp;
+  drawglyph(g, cx, cy);
 }
 
 void
