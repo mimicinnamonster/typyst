@@ -696,25 +696,6 @@ _drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
-	/* Intelligent cleaning up of the borders. */
-	if (x == 0) {
-		clear(0, (y == 0)? 0 : winy, borderpx,
-			winy + win.ch +
-			((winy + win.ch >= borderpx + win.th)? win.h : 0));
-	}
-	if (winx + width >= borderpx + win.tw) {
-		clear(winx + width, (y == 0)? 0 : winy, win.w,
-			((winy + win.ch >= borderpx + win.th)? win.h : (winy + win.ch)));
-	}
-
-  /*
-	if (y == 0)
-		clear(winx, 0, winx + width, borderpx);
-	if (winy + win.ch >= borderpx + win.th)
-		clear(winx, winy + win.ch, winx + width, win.h);
-  */
-
-
   _clear(winx, winy, winx+width, winy+win.ch, bg);
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
