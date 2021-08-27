@@ -885,7 +885,12 @@ handle_keypress(SDL_Event *ev)
   if (isctrl && !isshift) 
       buf[0] -= '`';
 
-  // printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
+  if (isalt) {
+    buf[1] = buf[0];
+    buf[0] = '\033';
+  }
+
+  printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
   ttywrite(buf, 1, 1);
 }
 
@@ -898,7 +903,7 @@ handle_textinput(SDL_Event *ev)
   if (ev->text.text[0] <= 31)
     return;
 
-  printf("text input: %s\n", ev->text.text);
+  //printf("text input: %s\n", ev->text.text);
   ttywrite(ev->text.text, strlen(ev->text.text), 1);
 }
 
@@ -942,7 +947,6 @@ run()
 			switch(event.type) {
 
         case SDL_TEXTINPUT:
-          printf("textinput enevt %s\n", event.text.text);
           handle_textinput(&event);
           break;
 
