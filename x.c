@@ -181,12 +181,6 @@ static char *opt_title = NULL;
 
 static int oldbutton = 3; /* button event on startup: 3 = release */
 
-void debugprint(char *s) {
-	SDL_Surface* tmpsrf = TTF_RenderText_Blended(dc.font.ttf, s, (SDL_Color){255, 255, 255});
-	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, NULL);
-	SDL_UpdateWindowSurface(sdlw.wnd);
-}
-
 void
 clipcopy(const Arg *dummy)
 {
@@ -432,7 +426,10 @@ loadfont(Font *f, FcPattern *pattern)
 	f->match = FcFontMatch(NULL, f->pattern, &result);
 
 	FcPatternGetString(f->match, FC_FILE, 0, &fontfile);
+
+	#ifdef DEBUG
 	printf("file: %s %f\n", fontfile, usedfontsize);
+	#endif
 
 	f->ttf = TTF_OpenFont(fontfile, usedfontsize);
 	if (!f->ttf) die(TTF_GetError());
@@ -543,7 +540,7 @@ init()
 
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
-  SDL_StartTextInput();
+	SDL_StartTextInput();
 
 	usedfont = (opt_font == NULL)? font : opt_font; 
 	loadfonts(usedfont, 0);
@@ -557,7 +554,9 @@ init()
 		win.w = 2 * borderpx + cols * win.cw;
 		win.h = 2 * borderpx + rows * win.ch;
 
+		#ifdef DEBUG
 		printf("win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", win.cw, win.ch, cols, rows);
+		#endif
 	}
 
 	// prepare sdl window
@@ -580,7 +579,7 @@ init()
 		clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
 		xsel.primary = NULL;
 		xsel.clipboard = NULL;
-  }
+	}
 }
 
 void
@@ -857,11 +856,11 @@ kmap(KeySym k, uint state)
 void
 handle_window(SDL_Event *ev)
 {
-  switch(ev->window.event) {
-    case SDL_WINDOWEVENT_CLOSE:
-      die("");
-      break;
-  }
+	switch(ev->window.event) {
+		case SDL_WINDOWEVENT_CLOSE:
+			die("");
+			break;
+	}
 }
 
 void
@@ -870,32 +869,35 @@ handle_keypress(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-  char buf[6] = { ev->key.keysym.sym };
+	char buf[6] = { ev->key.keysym.sym };
 
-  int isctrl = ev->key.keysym.mod & KMOD_CTRL;
-  int isshift = ev->key.keysym.mod & KMOD_SHIFT;
-  int isalt = ev->key.keysym.mod & KMOD_ALT;
+	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
+	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
+	int isalt = ev->key.keysym.mod & KMOD_ALT;
 
-  int ismod = isctrl || isshift || isalt;
-  int isprint = !(buf[0] & 0x40000000);
-  int isspec = buf[0] < ' ';
+	int ismod = isctrl || isshift || isalt;
+	int isprint = !(buf[0] & 0x40000000);
+	int isspec = buf[0] < ' ';
 
-  if (!isprint || (!isspec && !isctrl && !isalt))
-    return;
+	if (!isprint || (!isspec && !isctrl && !isalt))
+		return;
 
-  if (isctrl && isshift) 
-      buf[0] -= '@';
+	if (isctrl && isshift) 
+			buf[0] -= '@';
 
-  if (isctrl && !isshift) 
-      buf[0] -= '`';
+	if (isctrl && !isshift) 
+			buf[0] -= '`';
 
-  if (isalt) {
-    buf[1] = buf[0];
-    buf[0] = '\033';
-  }
+	if (isalt) {
+		buf[1] = buf[0];
+		buf[0] = '\033';
+	}
 
-  printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
-  ttywrite(buf, 1, 1);
+	#ifdef DEBUG
+	printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
+	#endif
+
+	ttywrite(buf, 1, 1);
 }
 
 void
@@ -904,11 +906,14 @@ handle_textinput(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-  if (ev->text.text[0] <= 31)
-    return;
+	if (ev->text.text[0] <= 31)
+		return;
 
-  //printf("text input: %s\n", ev->text.text);
-  ttywrite(ev->text.text, strlen(ev->text.text), 1);
+	#ifdef DEBUG
+	printf("text input: %s\n", ev->text.text);
+	#endif
+
+	ttywrite(ev->text.text, strlen(ev->text.text), 1);
 }
 
 void
@@ -926,7 +931,7 @@ run()
 {
 	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 60 };
 
-  SDL_Event event;
+	SDL_Event event;
 	int w = win.w, h = win.h;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
@@ -937,29 +942,29 @@ run()
 		FD_ZERO(&rfd);
 		FD_SET(ttyfd, &rfd);
 
-    // tty events
-    {
-      if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
-        if (errno == EINTR) continue;
-        die("select failed: %s\n", strerror(errno));
-      }
-      if (FD_ISSET(ttyfd, &rfd)) ttyread();
-    }
+		// tty events
+		{
+			if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
+				if (errno == EINTR) continue;
+				die("select failed: %s\n", strerror(errno));
+			}
+			if (FD_ISSET(ttyfd, &rfd)) ttyread();
+		}
 
-    // host events
+		// host events
 		while (SDL_PollEvent(&event)) {
 			switch(event.type) {
 
-        case SDL_TEXTINPUT:
-          handle_textinput(&event);
-          break;
-
-				case SDL_WINDOWEVENT: 
-          handle_window(&event);
+				case SDL_TEXTINPUT:
+					handle_textinput(&event);
 					break;
 
-        case SDL_KEYDOWN: 
-          handle_keypress(&event);
+				case SDL_WINDOWEVENT: 
+					handle_window(&event);
+					break;
+
+				case SDL_KEYDOWN: 
+					handle_keypress(&event);
 					break;
 
 				//[SDL_WindowEvent] = handle_window,
@@ -971,7 +976,7 @@ run()
 			}
 		}
 
-    MODBIT(win.mode, 1, MODE_VISIBLE);
+		MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		draw();
 		SDL_UpdateWindowSurface(sdlw.wnd);
