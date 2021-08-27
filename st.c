@@ -1503,8 +1503,27 @@ tsetmode(int priv, int set, const int *args, int narg)
 			case 25: /* DECTCEM -- Text Cursor Enable Mode */
 				setmode(!set, MODE_HIDE);
 				break;
+			case 9:    /* X10 mouse compatibility mode */
+				setmode(0, MODE_MOUSE);
+				setmode(set, MODE_MOUSEX10);
+				break;
+			case 1000: /* 1000: report button press */
+				setmode(0, MODE_MOUSE);
+				setmode(set, MODE_MOUSEBTN);
+				break;
+			case 1002: /* 1002: report motion on button press */
+				setmode(0, MODE_MOUSE);
+				setmode(set, MODE_MOUSEMOTION);
+				break;
+			case 1003: /* 1003: enable all mouse motions */
+				setmode(0, MODE_MOUSE);
+				setmode(set, MODE_MOUSEMANY);
+				break;
 			case 1004: /* 1004: send focus events to tty */
 				setmode(set, MODE_FOCUS);
+				break;
+			case 1006: /* 1006: extended reporting mode */
+				setmode(set, MODE_MOUSESGR);
 				break;
 			case 1034:
 				setmode(set, MODE_8BIT);

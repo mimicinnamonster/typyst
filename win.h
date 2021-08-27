@@ -33,6 +33,6 @@ int setcolorname(int, const char *);
 void settitle(char *);
 int setcursor(int);
 void setmode(int, unsigned int);
-void xsetpointermotion(int);
+void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);
