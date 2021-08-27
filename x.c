@@ -8,7 +8,6 @@
 #include <time.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <X11/cursorfont.h>
 #include <X11/keysym.h>
@@ -126,6 +125,7 @@ static void unloadfonts(void);
 static int evcol(SDL_Event *);
 static int evrow(SDL_Event *);
 
+static void handle_textinput(SDL_Event *);
 static void handle_keypress(SDL_Event *);
 static void handle_expose(SDL_Event *);
 static void handle_visibility(SDL_Event *);
@@ -543,6 +543,7 @@ init()
 
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
+  SDL_StartTextInput();
 
 	usedfont = (opt_font == NULL)? font : opt_font; 
 	loadfonts(usedfont, 0);
@@ -579,11 +580,7 @@ init()
 		clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
 		xsel.primary = NULL;
 		xsel.clipboard = NULL;
-
-		// TODO: xsel.xtarget = XInternAtom(xw.dpy, "UTF8_STRING", 0);
-		if (xsel.xtarget == None)
-			xsel.xtarget = XA_STRING;
-	}
+  }
 }
 
 void
@@ -866,57 +863,43 @@ handle_window(SDL_Event *ev)
 void
 handle_keypress(SDL_Event *ev)
 {
-  // printf("keycode: %d, state: %d\n", ev->key.keysym.sym, ev->key.state);
-  
-  if (ev->key.state == SDL_RELEASED) return;
-
-  char buf[64] = { ev->key.keysym.sym };
-	int len;
-	Rune c;
-
-	#if 0
-	Shortcut *bp;
-
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-	/*
-	if (xw.ime.xic)
-		len = XmbLookupString(xw.ime.xic, e, buf, sizeof buf, &ksym, &status);
-	else
-		len = XLookupString(e, buf, sizeof buf, &ksym, NULL);
-	*/
+  char buf[6] = { ev->key.keysym.sym };
 
-	/* 1. shortcuts */
-	for (bp = shortcuts; bp < shortcuts + LEN(shortcuts); bp++) {
-		if (ksym == bp->keysym && match(bp->mod, e->state)) {
-			bp->func(&(bp->arg));
-			return;
-		}
-	}
+  int isctrl = ev->key.keysym.mod & KMOD_CTRL;
+  int isshift = ev->key.keysym.mod & KMOD_SHIFT;
+  int isalt = ev->key.keysym.mod & KMOD_ALT;
 
-	/* 2. custom keys from config.h */
-	if ((customkey = kmap(ksym, e->state))) {
-		ttywrite(customkey, strlen(customkey), 1);
+  int ismod = isctrl || isshift || isalt;
+  int isprint = !(buf[0] & 0x40000000);
+  int isspec = buf[0] < ' ';
+
+  if (!isprint || (!isspec && !isctrl && !isalt))
+    return;
+
+  if (isctrl && isshift) 
+      buf[0] -= '@';
+
+  if (isctrl && !isshift) 
+      buf[0] -= '`';
+
+  // printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
+  ttywrite(buf, 1, 1);
+}
+
+void
+handle_textinput(SDL_Event *ev)
+{
+	if (IS_SET(MODE_KBDLOCK))
 		return;
-	}
-	#endif
 
-	/* 3. composed string from input method */
-	{
-    len = 1;
-    if (IS_SET(MODE_8BIT)) {
-			if (*buf < 0177) {
-				c = *buf | 0x80;
-				len = utf8encode(c, buf);
-			}
-		} else {
-      //buf[1] = buf[0];
-      //buf[0] = '\033';
-      //len = 2;
-		}
-	}
-	ttywrite(buf, len, 1);
+  if (ev->text.text[0] <= 31)
+    return;
+
+  printf("text input: %s\n", ev->text.text);
+  ttywrite(ev->text.text, strlen(ev->text.text), 1);
 }
 
 void
@@ -957,16 +940,20 @@ run()
     // host events
 		while (SDL_PollEvent(&event)) {
 			switch(event.type) {
+
+        case SDL_TEXTINPUT:
+          printf("textinput enevt %s\n", event.text.text);
+          handle_textinput(&event);
+          break;
+
 				case SDL_WINDOWEVENT: 
-            handle_window(&event);
+          handle_window(&event);
 					break;
 
         case SDL_KEYDOWN: 
-        case SDL_KEYUP: 
-            handle_keypress(&event);
+          handle_keypress(&event);
 					break;
 
-				//[SDL_KeyboardEvent] = handle_keypress,
 				//[SDL_WindowEvent] = handle_window,
 				//[SDL_WindowEvent] = handle_resize,
 				//[SDL_WindowEvent] = handle_focus,
