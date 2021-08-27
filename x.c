@@ -691,6 +691,10 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 	g.fg = g.bg;
 	g.bg = tmp;
 	drawglyph(g, cx, cy);
+
+	// refresh old cursor's cell
+	if (cx != ox || cy != oy)
+		drawglyph(og, ox, oy);
 }
 
 void
