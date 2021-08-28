@@ -7,7 +7,7 @@ include config.mk
 SRC = st.c x.c
 OBJ = $(SRC:.c=.o)
 
-all: options st
+all: options stp
 
 options:
 	@echo st build options:
@@ -26,7 +26,7 @@ x.o: arg.h config.h st.h win.h
 
 $(OBJ): config.h config.mk
 
-st: $(OBJ)
+stp: $(OBJ)
 	$(CC) -o $@ $(OBJ) $(STLDFLAGS)
 
 clean:
@@ -40,7 +40,7 @@ dist: clean
 	tar -cf - st-$(VERSION) | gzip > st-$(VERSION).tar.gz
 	rm -rf st-$(VERSION)
 
-install: st
+install: stp
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	cp -f st $(DESTDIR)$(PREFIX)/bin
 	chmod 755 $(DESTDIR)$(PREFIX)/bin/st
