@@ -445,8 +445,8 @@ loadfont(Font *f, FcPattern *pattern)
 	*/
 
 	f->set = NULL;
-	f->badslant = 1;
-	f->badweight = 1;
+  f->badslant = 0;
+  f->badweight = 0;
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
