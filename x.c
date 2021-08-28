@@ -563,12 +563,16 @@ init()
 void
 _drawglyph(Glyph base, int len, int x, int y)
 {
+	TTF_Font *ttf = dc.font.ttf;
+
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
-	int winx = borderpx + x * win.cw, winy = borderpx + y * win.ch,
-			width = charlen * win.cw;
-	RenderColor *fg, *bg, *temp, revfg, revbg, truefg, truebg;
-	RenderColor colfg, colbg;
-	XRectangle r;
+	
+	int winx = borderpx + x * win.cw;
+	int winy = borderpx + y * win.ch;
+	int width = charlen * win.cw;
+	
+	RenderColor *fg, *bg, *temp;
+	RenderColor colfg, colbg, truebg;
 
 	/* Fallback on color display for attributes not supported by the font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
@@ -577,6 +581,15 @@ _drawglyph(Glyph base, int len, int x, int y)
 	} else if ((base.mode & ATTR_ITALIC && dc.ifont.badslant) ||
 			(base.mode & ATTR_BOLD && dc.bfont.badweight)) {
 		base.fg = defaultattr;
+	}
+	
+	/* Select right font */
+	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
+		ttf = dc.ibfont.ttf;
+	} else if (base.mode & ATTR_ITALIC) {
+		ttf = dc.ifont.ttf;
+	} else if (base.mode & ATTR_BOLD) {
+		ttf = dc.bfont.ttf;
 	}
 
 	if (IS_TRUECOL(base.fg)) {
@@ -647,7 +660,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
-	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
+	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 	SDL_BlitSurface(tmpsrf, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
 	SDL_FreeSurface(tmpsrf);
 

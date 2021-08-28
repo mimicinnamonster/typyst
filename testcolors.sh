@@ -1,4 +1,5 @@
 #!/bin/bash
+
 #echo "base"
 #for x in {0..8}; do for i in {30..37}; do for a in {40..47}; do echo -ne "\e[$x;$i;$a""m\\\e[$x;$i;$a""m\e[0;37;40m "; done; echo; done; done; echo ""
 
@@ -17,15 +18,22 @@
 #    printf "\n";
 #}'
 
-color() {
-  echo -e "  \033[0;$(($2+$1))mcolor $1"
+esc() {
+  printf "\033[$1m"
 }
 
-echo "dark"
-for x in {0..7}; do color $x 30; done
+color() {
+  echo $(esc "0;$(($2+$1))") color $1
+}
 
-echo "bright"
-for x in {0..7}; do color $x 90; done
+#echo "dark"
+#for x in {0..7}; do color $x 30; done
+
+#echo "bright"
+#for x in {0..7}; do color $x 90; done
+
+#echo "bold"
+echo $(esc 1) bold $(esc 0)
 
 #reset
-echo -e "\033[0m1"
+esc 0
