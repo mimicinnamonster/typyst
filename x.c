@@ -1,4 +1,4 @@
-/* See LICENSE for license details. */
+#include <malloc.h>
 #include <errno.h>
 #include <math.h>
 #include <limits.h>
@@ -564,7 +564,7 @@ init()
 		if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 		
 		//Create window
-		sdlw.wnd = SDL_CreateWindow("SDL Tutorial", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, win.w, win.h, SDL_WINDOW_SHOWN);
+		sdlw.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, win.w, win.h, SDL_WINDOW_SHOWN);
 		if(sdlw.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
 
 		//Get window surface
@@ -671,6 +671,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){winx, winy, width, win.ch});
+	SDL_FreeSurface(tmpsrf);
 
 	// TODO: underline, strikethrough
 }
@@ -1055,7 +1056,6 @@ run:
 
 	init();
 	run();
-	
+
 	return 0;
 }
-
