@@ -13,8 +13,9 @@
 #include <X11/keysym.h>
 #include <X11/Xft/Xft.h>
 #include <X11/XKBlib.h>
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_ttf.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
+#include <SDL2_rotozoom.h>
 
 char *argv0;
 #include "arg.h"
@@ -95,30 +96,34 @@ typedef struct {
 	FcFontSet *set;
 	FcPattern *pattern;
 	FcPattern *match;
+	FcCharSet *charset;
 	TTF_Font *ttf;
 } Font;
+
+typedef struct {
+	Font font, bfont, ifont, ibfont;
+} FontSet;
 
 /* Drawing Context */
 typedef struct {
 	RenderColor *col;
 	size_t collen;
-	Font font, bfont, ifont, ibfont;
+	FontSet *fontsets;
+	size_t fontsetlen;
 } DC;
 
 static inline ushort sixd_to_16bit(int);
 static void _drawglyph(Glyph, int, int, int);
-static void drawglyph(Glyph, int, int);
 static void _clear(int, int, int, int, RenderColor *);
-static void clear(int, int, int, int);
 static int xgeommasktogravity(int);
 static void init();
 static void resize(int, int);
 static void xhints(void);
 static int loadcolor(int, const char *, RenderColor *);
 static int loadfont(Font *, FcPattern *);
-static void loadfonts(const char *, double);
+static int loadfontset(const char *, double);
 static void unloadfont(Font *);
-static void unloadfonts(void);
+static void unloadfontset(void);
 static int evcol(SDL_Event *);
 static int evrow(SDL_Event *);
 
@@ -212,8 +217,8 @@ zoom(const Arg *arg)
 void
 zoomabs(const Arg *arg)
 {
-	unloadfonts();
-	loadfonts(usedfont, arg->f);
+	unloadfontset();
+	loadfontset(usedfont, arg->f);
 	resize(0, 0);
 	redraw();
 }
@@ -371,13 +376,6 @@ _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 	SDL_FillRect(win.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(win.srf->format, col->red, col->green, col->blue));
 }
 
-void
-clear(int x1, int y1, int x2, int y2)
-{
-	int idx = IS_SET(MODE_REVERSE)? defaultfg : defaultbg;
-	_clear(x1, y1, x2, y2, &dc.col[idx]);
-}
-
 int
 xgeommasktogravity(int mask)
 {
@@ -396,7 +394,7 @@ xgeommasktogravity(int mask)
 int
 loadfont(Font *f, FcPattern *pattern)
 {
-	unsigned char *fontfile;
+	unsigned char *filepath;
 	FcResult result;
 
 	// TODO: slanted bolded
@@ -408,13 +406,14 @@ loadfont(Font *f, FcPattern *pattern)
 
 	f->match = FcFontMatch(NULL, f->pattern, &result);
 
-	FcPatternGetString(f->match, FC_FILE, 0, &fontfile);
+	FcPatternGetString(f->match, FC_FILE, 0, &filepath);
+	FcPatternGetCharSet(f->match, FC_CHARSET, 0, 	&f->charset);
 
 	#ifdef DEBUG
-	printf("file: %s %f\n", fontfile, usedfontsize);
+	printf("file: %s %f\n", filepath, usedfontsize);
 	#endif
 
-	f->ttf = TTF_OpenFont(fontfile, usedfontsize);
+	f->ttf = TTF_OpenFont(filepath, usedfontsize);
 	if (!f->ttf) die(TTF_GetError());
 
 	// TODO: hinting
@@ -437,9 +436,15 @@ loadfont(Font *f, FcPattern *pattern)
 	return 0;
 }
 
-void
-loadfonts(const char *fontstr, double fontsize)
+int
+loadfontset(const char *fontstr, double fontsize)
 {
+	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
+	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
+
+	if (!dc.fontsets)
+		die("Ran out of memory to allocate a fontset");
+
 	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);;
 	double fontval;
 
@@ -466,36 +471,34 @@ loadfonts(const char *fontstr, double fontsize)
 		defaultfontsize = usedfontsize;
 	}
 
-	if (loadfont(&dc.font, pattern))
+	if (loadfont(&fontset->font, pattern))
 		die("can't open font %s\n", fontstr);
 
 	if (usedfontsize < 0) {
-		FcPatternGetDouble(dc.font.pattern, FC_PIXEL_SIZE, 0, &fontval);
+		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
 		usedfontsize = fontval;
 		if (fontsize == 0)
 			defaultfontsize = fontval;
 	}
 
-	/* Setting character width and height. */
-	win.cw = ceilf(dc.font.width * cwscale);
-	win.ch = ceilf(dc.font.height * chscale);
-
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (loadfont(&dc.ifont, pattern))
+	if (loadfont(&fontset->ifont, pattern))
 		die("can't open font %s\n", fontstr);
 
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	if (loadfont(&dc.ibfont, pattern))
+	if (loadfont(&fontset->ibfont, pattern))
 		die("can't open font %s\n", fontstr);
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
-	if (loadfont(&dc.bfont, pattern))
+	if (loadfont(&fontset->bfont, pattern))
 		die("can't open font %s\n", fontstr);
 
 	FcPatternDestroy(pattern);
+
+	return dc.fontsetlen-1;
 }
 
 void
@@ -508,12 +511,14 @@ unloadfont(Font *f)
 }
 
 void
-unloadfonts(void)
+unloadfontset(void)
 {
+	#if 0
 	unloadfont(&dc.font);
 	unloadfont(&dc.bfont);
 	unloadfont(&dc.ifont);
 	unloadfont(&dc.ibfont);
+	#endif
 }
 
 void
@@ -526,8 +531,14 @@ init()
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
 	SDL_StartTextInput();
 
-	usedfont = (opt_font == NULL)? font : opt_font; 
-	loadfonts(usedfont, 0);
+	usedfont = (opt_font == NULL)? font : opt_font;
+
+	loadfontset(usedfont, 0);
+	win.cw = ceilf(dc.fontsets->font.width * cwscale);
+	win.ch = ceilf(dc.fontsets->font.height * chscale);
+
+	loadfontset("noto color emoji", 0);
+
 	loadcols();
 
 	// prepare sdl window
@@ -536,7 +547,7 @@ init()
 
 		int w = 2 * borderpx + cols * win.cw;
 		int h = 2 * borderpx + rows * win.ch;
-		
+
 		//Create window
 		win.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 		if(win.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
@@ -548,7 +559,7 @@ init()
 		resize(w, h);
 	}
 
-	
+
 	{
 		win.mode = MODE_NUMLOCK;
 		resettitle();
@@ -563,33 +574,41 @@ init()
 void
 _drawglyph(Glyph base, int len, int x, int y)
 {
-	TTF_Font *ttf = dc.font.ttf;
+	FontSet *fontset = &dc.fontsets[0];
+
+	int isEmoji = FcFalse == FcCharSetHasChar(fontset->font.charset, base.u);
+
+	if (isEmoji) {
+		fontset = &dc.fontsets[1];
+	}
+
+	TTF_Font *ttf = fontset->font.ttf;
 
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
-	
+
 	int winx = borderpx + x * win.cw;
 	int winy = borderpx + y * win.ch;
 	int width = charlen * win.cw;
-	
+
 	RenderColor *fg, *bg, *temp;
 	RenderColor colfg, colbg, truebg;
 
 	/* Fallback on color display for attributes not supported by the font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
-		if (dc.ibfont.badslant || dc.ibfont.badweight)
+		if (fontset->ibfont.badslant || fontset->ibfont.badweight)
 			base.fg = defaultattr;
-	} else if ((base.mode & ATTR_ITALIC && dc.ifont.badslant) ||
-			(base.mode & ATTR_BOLD && dc.bfont.badweight)) {
+	} else if ((base.mode & ATTR_ITALIC && fontset->ifont.badslant) ||
+			(base.mode & ATTR_BOLD && fontset->bfont.badweight)) {
 		base.fg = defaultattr;
 	}
-	
+
 	/* Select right font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
-		ttf = dc.ibfont.ttf;
+		ttf = fontset->ibfont.ttf;
 	} else if (base.mode & ATTR_ITALIC) {
-		ttf = dc.ifont.ttf;
+		ttf = fontset->ifont.ttf;
 	} else if (base.mode & ATTR_BOLD) {
-		ttf = dc.bfont.ttf;
+		ttf = fontset->bfont.ttf;
 	}
 
 	if (IS_TRUECOL(base.fg)) {
@@ -660,19 +679,22 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
-	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
-	SDL_BlitSurface(tmpsrf, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
-	SDL_FreeSurface(tmpsrf);
+	SDL_Surface* bitmap;
+	if (isEmoji) {
+		char text[5];
+		utf8encode(base.u, text);
+		bitmap = TTF_RenderUTF8_Blended(ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
+		SDL_Surface* shrinkmap = shrinkSurface(bitmap, 6, 6);
+		SDL_BlitSurface(shrinkmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
+		SDL_FreeSurface(shrinkmap);
+	}
+	else {
+		bitmap = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
+		SDL_BlitSurface(bitmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
+	}
+	SDL_FreeSurface(bitmap);
 
 	// TODO: underline, strikethrough
-}
-
-void
-drawglyph(Glyph g, int x, int y)
-{
-	// TODO: wide glyphs
-	int len = 1;
-	_drawglyph(g, len, x, y);
 }
 
 void
@@ -681,11 +703,11 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 	int tmp = g.fg;
 	g.fg = g.bg;
 	g.bg = tmp;
-	drawglyph(g, cx, cy);
+	_drawglyph(g, 1, cx, cy);
 
 	// refresh old cursor's cell
 	if (cx != ox || cy != oy)
-		drawglyph(og, ox, oy);
+		_drawglyph(og, 1, ox, oy);
 }
 
 void
@@ -877,10 +899,10 @@ handle_keypress(SDL_Event *ev)
 	if (!isprint || (!isspec && !isctrl && !isalt))
 		return;
 
-	if (isctrl && isshift) 
+	if (isctrl && isshift)
 			buf[0] -= '@';
 
-	if (isctrl && !isshift) 
+	if (isctrl && !isshift)
 			buf[0] -= '`';
 
 	if (isalt) {
@@ -942,11 +964,11 @@ run()
 					handle_textinput(&event);
 					break;
 
-				case SDL_WINDOWEVENT: 
+				case SDL_WINDOWEVENT:
 					handle_window(&event);
 					break;
 
-				case SDL_KEYDOWN: 
+				case SDL_KEYDOWN:
 					handle_keypress(&event);
 					break;
 
