@@ -65,10 +65,13 @@ typedef unsigned int Color;
 
 /* Purely graphic info */
 typedef struct {
-	int tw, th; /* tty width and height */
+	SDL_Window *wnd;
+	SDL_Surface *srf;
+
 	int w, h; /* window width and height */
-	int ch; /* char height */
-	int cw; /* char width	*/
+	int cw, ch; /* char width and height */
+	int tw, th; /* tty width and height */
+
 	int mode; /* window state/mode flags */
 	int cursor; /* cursor style */
 } TermWindow;
@@ -79,11 +82,6 @@ typedef struct {
 	struct timespec tclick1;
 	struct timespec tclick2;
 } XSelection;
-
-typedef struct {
-	SDL_Window *wnd;
-	SDL_Surface *srf;
-} SDLWindow;
 
 /* Font structure */
 #define Font Font_
@@ -114,7 +112,6 @@ static void _clear(int, int, int, int, RenderColor *);
 static void clear(int, int, int, int);
 static int xgeommasktogravity(int);
 static void init();
-static void cresize(int, int);
 static void resize(int, int);
 static void xhints(void);
 static int loadcolor(int, const char *, RenderColor *);
@@ -131,7 +128,6 @@ static void handle_expose(SDL_Event *);
 static void handle_visibility(SDL_Event *);
 static void handle_unmap(SDL_Event *);
 static void handle_window(SDL_Event *);
-static void handle_resize(SDL_Event *);
 static void handle_focus();
 
 static void _setsel(char *, Time);
@@ -143,7 +139,6 @@ static void usage(void);
 
 /* Globals */
 static DC dc;
-static SDLWindow sdlw;
 static XSelection xsel;
 static TermWindow win;
 
@@ -219,7 +214,7 @@ zoomabs(const Arg *arg)
 {
 	unloadfonts();
 	loadfonts(usedfont, arg->f);
-	cresize(0, 0);
+	resize(0, 0);
 	redraw();
 }
 
@@ -279,37 +274,25 @@ setsel(char *str)
 }
 
 void
-cresize(int width, int height)
+resize(int width, int height)
 {
-	int col, row;
+	win.w = width;
+	win.h = height;
 
-	if (width != 0)
-		win.w = width;
-	if (height != 0)
-		win.h = height;
+	cols = MAX(1, (win.w - 2 * borderpx) / win.cw);
+	rows = MAX(1, (win.h - 2 * borderpx) / win.ch);
 
-	col = (win.w - 2 * borderpx) / win.cw;
-	row = (win.h - 2 * borderpx) / win.ch;
-	col = MAX(1, col);
-	row = MAX(1, row);
+	win.tw = cols * win.cw;
+	win.th = rows * win.ch;
 
-	tresize(col, row);
-	resize(col, row);
+	#ifdef DEBUG
+	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, win.tw, win.th);
+	#endif
 
+	win.srf = SDL_GetWindowSurface(win.wnd);
+
+	tresize(cols, rows);
 	ttyresize(win.tw, win.th);
-}
-
-void
-resize(int col, int row)
-{
-	/*
-	win.tw = col * win.cw;
-	win.th = row * win.ch;
-
-	SDL_SetWindowSize(sdlw.wnd, win.w, win.h);
-	
-	printf("size: %d %d\n", win.w, win.h);
-	*/
 }
 
 ushort
@@ -385,7 +368,7 @@ setcolorname(int x, const char *name)
 void
 _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
-	SDL_FillRect(sdlw.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(sdlw.srf->format, col->red, col->green, col->blue));
+	SDL_FillRect(win.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(win.srf->format, col->red, col->green, col->blue));
 }
 
 void
@@ -445,8 +428,8 @@ loadfont(Font *f, FcPattern *pattern)
 	*/
 
 	f->set = NULL;
-  f->badslant = 0;
-  f->badweight = 0;
+	f->badslant = 0;
+	f->badweight = 0;
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
@@ -536,6 +519,7 @@ unloadfonts(void)
 void
 init()
 {
+	tnew(MAX(cols, 1), MAX(rows, 1));
 	selinit();
 
 	if (!FcInit()) die("could not init fontconfig.\n");
@@ -545,31 +529,25 @@ init()
 	usedfont = (opt_font == NULL)? font : opt_font; 
 	loadfonts(usedfont, 0);
 	loadcols();
-		
-	// screen size based on glyph width
-	{
-		win.cw = ceilf(dc.font.width * cwscale);
-		win.ch = ceilf(dc.font.height * chscale);
-
-		win.w = 2 * borderpx + cols * win.cw;
-		win.h = 2 * borderpx + rows * win.ch;
-
-		#ifdef DEBUG
-		printf("win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", win.cw, win.ch, cols, rows);
-		#endif
-	}
 
 	// prepare sdl window
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+
+		int w = 2 * borderpx + cols * win.cw;
+		int h = 2 * borderpx + rows * win.ch;
 		
 		//Create window
-		sdlw.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, win.w, win.h, SDL_WINDOW_SHOWN);
-		if(sdlw.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+		win.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+		if(win.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
 
 		//Get window surface
-		sdlw.srf = SDL_GetWindowSurface(sdlw.wnd);
+		win.srf = SDL_GetWindowSurface(win.wnd);
+
+		// screen size based on glyph width
+		resize(w, h);
 	}
+
 	
 	{
 		win.mode = MODE_NUMLOCK;
@@ -670,7 +648,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
 	SDL_Surface* tmpsrf = TTF_RenderGlyph_Blended(dc.font.ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
-	SDL_BlitSurface(tmpsrf, NULL, sdlw.srf, &(SDL_Rect){winx, winy, width, win.ch});
+	SDL_BlitSurface(tmpsrf, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
 	SDL_FreeSurface(tmpsrf);
 
 	// TODO: underline, strikethrough
@@ -700,7 +678,7 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 void
 settitle(char *p)
 {
-	SDL_SetWindowTitle(sdlw.wnd, p);
+	SDL_SetWindowTitle(win.wnd, p);
 }
 
 int
@@ -861,6 +839,9 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_CLOSE:
 			die("");
 			break;
+		case SDL_WINDOWEVENT_RESIZED:
+			resize(ev->window.data1, ev->window.data2);
+			break;
 	}
 }
 
@@ -918,16 +899,6 @@ handle_textinput(SDL_Event *ev)
 }
 
 void
-handle_resize(SDL_Event *e)
-{
-	#if 0
-	if (e->xconfigure.width == win.w && e->xconfigure.height == win.h)
-		return;
-	cresize(e->xconfigure.width, e->xconfigure.height);
-	#endif
-}
-
-void
 run()
 {
 	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 60 };
@@ -936,8 +907,6 @@ run()
 	int w = win.w, h = win.h;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-
-	cresize(w, h);
 
 	while (1) {
 		FD_ZERO(&rfd);
@@ -980,7 +949,7 @@ run()
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		draw();
-		SDL_UpdateWindowSurface(sdlw.wnd);
+		SDL_UpdateWindowSurface(win.wnd);
 	}
 }
 
@@ -1001,6 +970,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
+	setlocale(LC_CTYPE, "");
 	setcursor(cursorshape);
 
 	ARGBEGIN {
@@ -1048,11 +1018,6 @@ run:
 	if (argc > 0) opt_cmd = argv;
 
 	if (!opt_title) opt_title = (opt_line || !opt_cmd) ? "st" : opt_cmd[0];
-
-	setlocale(LC_CTYPE, "");
-	cols = MAX(cols, 1);
-	rows = MAX(rows, 1);
-	tnew(cols, rows);
 
 	init();
 	run();
