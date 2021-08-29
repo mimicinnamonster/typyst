@@ -9,7 +9,7 @@
 typedef struct {
 	struct timespec last;
 	int curr;
-	SDL_Surface **frame;
+	SDL_Texture **frame;
 	int *duration;
 	int frames;
 
@@ -18,13 +18,12 @@ typedef struct {
 Animation anim;
 
 void
-blitframe(gd_GIF *gif, SDL_Surface *frame, unsigned char *gifpixels)
+convert(gd_GIF *gif, unsigned char *gifpixels, SDL_Surface *frame)
 {
 	unsigned char *color = gifpixels;
 	void *addr;
 	unsigned int pixel;
 
-	SDL_LockSurface(frame);
 	for (int i=0; i<gif->height; i++) {
 		for (int j=0; j<gif->width; j++) {
 				if (!gd_is_bgcolor(gif, color))
@@ -38,7 +37,6 @@ blitframe(gd_GIF *gif, SDL_Surface *frame, unsigned char *gifpixels)
 				color += 3;
 		}
 	}
-	SDL_UnlockSurface(frame);
 }
 
 void
@@ -53,19 +51,23 @@ initanim(char *filename)
 	#endif
 	
 	unsigned char *gifpixels = malloc(gif->width * gif->height * 3);
-	
+
+	SDL_Surface *srf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
+
 	while (gd_get_frame(gif)) {
 		++anim.frames;
+
+		gd_render_frame(gif, gifpixels);
+		convert(gif, gifpixels, srf);
+
 		anim.duration = realloc(anim.duration, sizeof(SDL_Surface*) * anim.frames);
 		anim.frame = realloc(anim.frame, sizeof(SDL_Surface*) * anim.frames);
 
-		anim.frame[anim.frames-1] = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
-
-		gd_render_frame(gif, gifpixels);
-		blitframe(gif, anim.frame[anim.frames-1], gifpixels);
-
+		anim.frame[anim.frames-1] = SDL_CreateTextureFromSurface(win.rnd, srf);
 		anim.duration[anim.frames-1] = gif->gce.delay;
 	}
+
+	SDL_FreeSurface(srf);
 
 	#ifdef DEBUG
 	printf("  converted frames: %d\n", anim.frames);

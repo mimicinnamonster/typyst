@@ -66,7 +66,8 @@ typedef unsigned int Color;
 /* Purely graphic info */
 typedef struct {
 	SDL_Window *wnd;
-	SDL_Surface *srf;
+	SDL_Renderer *rnd;
+	SDL_Surface *txt;
 
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
@@ -295,9 +296,9 @@ resize(int width, int height)
 	#endif
 
 	// Clone window surface
-	SDL_FreeSurface(win.srf);
+	SDL_FreeSurface(win.txt);
 	SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
-	win.srf = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+	win.txt = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 
 	tresize(cols, rows);
 	ttyresize(win.tw, win.th);
@@ -376,7 +377,7 @@ setcolorname(int x, const char *name)
 void
 _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
-	SDL_FillRect(win.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.srf->format, col->red, col->green, col->blue, col->alpha));
+	SDL_FillRect(win.txt, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.txt->format, col->red, col->green, col->blue, col->alpha));
 }
 
 int
@@ -553,13 +554,11 @@ init()
 		int w = cols * win.cw;
 		int h = rows * win.ch;
 
-		//Create window
-		win.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
-		if(win.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+		// create window and renderer
+		SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
 
-		// Clone window surface
-		SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
-		win.srf = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+		// create main text surface
+		win.txt = SDL_CreateRGBSurface(0, w, h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 
 		// screen size based on glyph width
 		resize(w, h);
@@ -692,12 +691,11 @@ _drawglyph(Glyph base, int len, int x, int y)
 		char text[5];
 		utf8encode(base.u, text);
 		bitmap = TTF_RenderUTF8_Blended(ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
-    SDL_BlitScaled(bitmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
-
+		SDL_BlitScaled(bitmap, NULL, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
 	}
 	else {
 		bitmap = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
-		SDL_BlitSurface(bitmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
+		SDL_BlitSurface(bitmap, NULL, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
 	}
 	SDL_FreeSurface(bitmap);
 
@@ -991,17 +989,20 @@ run()
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		{
-			SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
+			SDL_RenderClear(win.rnd);
 
 			if (opt_anim) {
 				animate();
-				SDL_BlitScaled(anim.frame[anim.curr], 0, wndsrf, 0);
+				SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
 			}
 
 			draw();
-			SDL_BlitSurface(win.srf, 0, wndsrf, 0);
 
-			SDL_UpdateWindowSurface(win.wnd);
+			SDL_Texture *txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
+			SDL_RenderCopy(win.rnd, txt, 0, 0);
+			SDL_DestroyTexture(txt);
+
+			SDL_RenderPresent(win.rnd);
 		}
 	}
 }
