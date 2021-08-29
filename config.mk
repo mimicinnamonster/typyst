@@ -21,7 +21,7 @@ INCS = -I$(X11INC) \
 LIBS = -L$(X11LIB) -lm -lrt -lX11 -lutil -lXft -lXrender\
        `$(PKG_CONFIG) --libs fontconfig` \
        `$(PKG_CONFIG) --libs freetype2` \
-       `./sdl2/install/bin/sdl2-config --libs` -lSDL2_ttf -lSDL2_gfx
+       `./sdl2/install/bin/sdl2-config --libs` -lSDL2_ttf
 
 # flags
 STCPPFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600

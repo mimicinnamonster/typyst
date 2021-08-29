@@ -15,7 +15,6 @@
 #include <X11/XKBlib.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
-#include <SDL2_rotozoom.h>
 
 char *argv0;
 #include "arg.h"
@@ -693,9 +692,8 @@ _drawglyph(Glyph base, int len, int x, int y)
 		char text[5];
 		utf8encode(base.u, text);
 		bitmap = TTF_RenderUTF8_Blended(ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
-		SDL_Surface* shrinkmap = shrinkSurface(bitmap, 6, 6);
-		SDL_BlitSurface(shrinkmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
-		SDL_FreeSurface(shrinkmap);
+    SDL_BlitScaled(bitmap, NULL, win.srf, &(SDL_Rect){winx, winy, width, win.ch});
+
 	}
 	else {
 		bitmap = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
