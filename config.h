@@ -108,7 +108,7 @@ float alpha = 0.8;
 // st changes colors orders 2,3 with 4,5
 static const RenderColor colorname[] = {
 	/* 8 normal colors */
-	(RenderColor){ .red = 0, .green = 0, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 0, .green = 0, .blue = 0, .alpha = 128 },
 	(RenderColor){ .red = 170, .green = 0, .blue = 0, .alpha = 255 },
 	(RenderColor){ .red = 0, .green = 0, .blue = 170, .alpha = 255 },
 	(RenderColor){ .red = 170, .green = 0, .blue = 170, .alpha = 255 },

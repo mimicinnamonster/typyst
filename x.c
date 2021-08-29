@@ -178,6 +178,7 @@ static char *opt_io		= NULL;
 static char *opt_line	= NULL;
 static char *opt_name	= NULL;
 static char *opt_title = NULL;
+static char *opt_anim = NULL;
 
 static int oldbutton = 3; /* button event on startup: 3 = release */
 
@@ -294,7 +295,10 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, win.tw, win.th);
 	#endif
 
-	win.srf = SDL_GetWindowSurface(win.wnd);
+	// Clone window surface
+	SDL_FreeSurface(win.srf);
+	SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
+	win.srf = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 
 	tresize(cols, rows);
 	ttyresize(win.tw, win.th);
@@ -373,7 +377,7 @@ setcolorname(int x, const char *name)
 void
 _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
-	SDL_FillRect(win.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGB(win.srf->format, col->red, col->green, col->blue));
+	SDL_FillRect(win.srf, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.srf->format, col->red, col->green, col->blue, col->alpha));
 }
 
 int
@@ -521,6 +525,8 @@ unloadfontset(void)
 	#endif
 }
 
+#include "gif.c"
+
 void
 init()
 {
@@ -552,13 +558,13 @@ init()
 		win.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
 		if(win.wnd == NULL) die("Window could not be created! SDL_Error: %s\n", SDL_GetError());
 
-		//Get window surface
-		win.srf = SDL_GetWindowSurface(win.wnd);
+		// Clone window surface
+		SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
+		win.srf = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 
 		// screen size based on glyph width
 		resize(w, h);
 	}
-
 
 	{
 		win.mode = MODE_NUMLOCK;
@@ -569,6 +575,9 @@ init()
 		xsel.primary = NULL;
 		xsel.clipboard = NULL;
 	}
+
+	if (opt_anim)
+		initanim(opt_anim);
 }
 
 void
@@ -983,8 +992,19 @@ run()
 
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
-		draw();
-		SDL_UpdateWindowSurface(win.wnd);
+		{
+			SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
+
+			if (opt_anim) {
+				animate();
+				SDL_BlitScaled(anim.frame[anim.curr], 0, wndsrf, 0);
+			}
+
+			draw();
+			SDL_BlitSurface(win.srf, 0, wndsrf, 0);
+
+			SDL_UpdateWindowSurface(win.wnd);
+		}
 	}
 }
 
@@ -1002,6 +1022,7 @@ usage(void)
 			" [stty_args ...]\n", argv0, argv0);
 }
 
+
 int
 main(int argc, char *argv[])
 {
@@ -1010,7 +1031,7 @@ main(int argc, char *argv[])
 
 	ARGBEGIN {
 	case 'a':
-		allowaltscreen = 0;
+		opt_anim = EARGF(usage());
 		break;
 	case 'A':
 		opt_alpha = EARGF(usage());
