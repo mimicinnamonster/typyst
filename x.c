@@ -284,8 +284,8 @@ resize(int width, int height)
 	win.w = width;
 	win.h = height;
 
-	cols = MAX(1, (win.w - 2 * borderpx) / win.cw);
-	rows = MAX(1, (win.h - 2 * borderpx) / win.ch);
+	cols = MAX(1, (win.w) / win.cw);
+	rows = MAX(1, (win.h) / win.ch);
 
 	win.tw = cols * win.cw;
 	win.th = rows * win.ch;
@@ -545,8 +545,8 @@ init()
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 
-		int w = 2 * borderpx + cols * win.cw;
-		int h = 2 * borderpx + rows * win.ch;
+		int w = cols * win.cw;
+		int h = rows * win.ch;
 
 		//Create window
 		win.wnd = SDL_CreateWindow("term", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
@@ -586,8 +586,8 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 
-	int winx = borderpx + x * win.cw;
-	int winy = borderpx + y * win.ch;
+	int winx = x * win.cw;
+	int winy = y * win.ch;
 	int width = charlen * win.cw;
 
 	RenderColor *fg, *bg, *temp;
