@@ -1,6 +1,13 @@
 typyst
-*.o
 debian
+bench.txt
+
+*.o
+*.gcov
+*.gcda
+*.gcno
+gmon.out
+
 sdl2
 sdl2_ttf
 sdl2_gfx

@@ -67,7 +67,7 @@ typedef unsigned int Color;
 typedef struct {
 	SDL_Window *wnd;
 	SDL_Renderer *rnd;
-	SDL_Surface *txt;
+	SDL_Texture *txt;
 
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
@@ -98,6 +98,7 @@ typedef struct {
 	FcPattern *match;
 	FcCharSet *charset;
 	TTF_Font *ttf;
+	SDL_Texture **cache;
 } Font;
 
 typedef struct {
@@ -115,15 +116,11 @@ typedef struct {
 static inline ushort sixd_to_16bit(int);
 static void _drawglyph(Glyph, int, int, int);
 static void _clear(int, int, int, int, RenderColor *);
-static int xgeommasktogravity(int);
 static void init();
 static void resize(int, int);
-static void xhints(void);
 static int loadcolor(int, const char *, RenderColor *);
 static int loadfont(Font *, FcPattern *);
 static int loadfontset(const char *, double);
-static void unloadfont(Font *);
-static void unloadfontset(void);
 static int evcol(SDL_Event *);
 static int evrow(SDL_Event *);
 
@@ -147,24 +144,8 @@ static DC dc;
 static XSelection xsel;
 static TermWindow win;
 
-/* Font Ring Cache */
-enum {
-	FRC_NORMAL,
-	FRC_ITALIC,
-	FRC_BOLD,
-	FRC_ITALICBOLD
-};
+static const FONTCACHESIZE = USHRT_MAX;
 
-typedef struct {
-	XftFont *font;
-	int flags;
-	Rune unicodep;
-} Fontcache;
-
-/* Fontcache is an array now. A new font will be appended to the array. */
-static Fontcache *frc = NULL;
-static int frclen = 0;
-static int frccap = 0;
 static char *usedfont = NULL;
 static double usedfontsize = 0;
 static double defaultfontsize = 0;
@@ -218,7 +199,6 @@ zoom(const Arg *arg)
 void
 zoomabs(const Arg *arg)
 {
-	unloadfontset();
 	loadfontset(usedfont, arg->f);
 	resize(0, 0);
 	redraw();
@@ -295,10 +275,10 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, win.tw, win.th);
 	#endif
 
-	// Clone window surface
-	SDL_FreeSurface(win.txt);
-	SDL_Surface *wndsrf = SDL_GetWindowSurface(win.wnd);
-	win.txt = SDL_CreateRGBSurface(0, wndsrf->w, wndsrf->h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+	// resize text texture
+	SDL_DestroyTexture(win.txt);
+	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, width, height);
+	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 	tresize(cols, rows);
 	ttyresize(win.tw, win.th);
@@ -377,22 +357,8 @@ setcolorname(int x, const char *name)
 void
 _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
-	SDL_FillRect(win.txt, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.txt->format, col->red, col->green, col->blue, col->alpha));
-}
-
-int
-xgeommasktogravity(int mask)
-{
-	switch (mask & (XNegative|YNegative)) {
-	case 0:
-		return NorthWestGravity;
-	case XNegative:
-		return NorthEastGravity;
-	case YNegative:
-		return SouthWestGravity;
-	}
-
-	return SouthEastGravity;
+	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
+	SDL_RenderFillRect(win.rnd, &(SDL_Rect){x1, y1, x2-x1, y2-y1});
 }
 
 int
@@ -436,6 +402,12 @@ loadfont(Font *f, FcPattern *pattern)
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
+
+	#ifdef DEBUG
+	printf("allocating %ld", FONTCACHESIZE * sizeof(SDL_Surface*));
+	#endif
+
+	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
 
 	return 0;
 }
@@ -505,26 +477,6 @@ loadfontset(const char *fontstr, double fontsize)
 	return dc.fontsetlen-1;
 }
 
-void
-unloadfont(Font *f)
-{
-	if (!f) return
-	FcPatternDestroy(f->match);
-	FcPatternDestroy(f->pattern);
-	if (f->set) FcFontSetDestroy(f->set);
-}
-
-void
-unloadfontset(void)
-{
-	#if 0
-	unloadfont(&dc.font);
-	unloadfont(&dc.bfont);
-	unloadfont(&dc.ifont);
-	unloadfont(&dc.ibfont);
-	#endif
-}
-
 #include "gif.c"
 
 void
@@ -551,6 +503,8 @@ init()
 	{
 		if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 
+		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
 		int w = cols * win.cw;
 		int h = rows * win.ch;
 
@@ -558,7 +512,8 @@ init()
 		SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
 
 		// create main text surface
-		win.txt = SDL_CreateRGBSurface(0, w, h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+		win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
+		SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 		// screen size based on glyph width
 		resize(w, h);
@@ -589,7 +544,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 		fontset = &dc.fontsets[1];
 	}
 
-	TTF_Font *ttf = fontset->font.ttf;
+	Font *f = &fontset->font;
 
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 
@@ -611,11 +566,11 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	/* Select right font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
-		ttf = fontset->ibfont.ttf;
+		f = &fontset->ibfont;
 	} else if (base.mode & ATTR_ITALIC) {
-		ttf = fontset->ifont.ttf;
+		f = &fontset->ifont;
 	} else if (base.mode & ATTR_BOLD) {
-		ttf = fontset->bfont.ttf;
+		f = &fontset->bfont;
 	}
 
 	if (IS_TRUECOL(base.fg)) {
@@ -686,21 +641,42 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
-	SDL_Surface* bitmap;
-	if (isEmoji) {
-		char text[5];
-		utf8encode(base.u, text);
-		bitmap = TTF_RenderUTF8_Blended(ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
-		SDL_BlitScaled(bitmap, NULL, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
-	}
-	else {
-		bitmap = TTF_RenderGlyph_Blended(ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
-		SDL_BlitSurface(bitmap, NULL, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
-	}
-	SDL_FreeSurface(bitmap);
 
-	// TODO: underline, strikethrough
-}
+	SDL_Texture *ftxt = 0;
+
+	if (base.u < FONTCACHESIZE && f->cache[base.u]) {
+		ftxt = f->cache[base.u];
+	}
+
+	if (!ftxt) {
+		SDL_Surface* bitmap;
+
+		if (isEmoji) {
+			char text[5];
+			utf8encode(base.u, text);
+			bitmap = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
+		}
+		else {
+			bitmap = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
+		}
+
+
+		#ifdef DEBUG
+		printf("making cache for glyph %d\n", base.u);
+		#endif
+
+		ftxt = SDL_CreateTextureFromSurface(win.rnd, bitmap);
+		SDL_FreeSurface(bitmap);
+
+		// TODO: underline, strikethrough
+	}
+
+	if (base.u < FONTCACHESIZE) {
+		f->cache[base.u] = ftxt;
+	}
+
+	SDL_RenderCopy(win.rnd, ftxt, 0, &(SDL_Rect){winx, winy, width, win.ch});
+	}
 
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
@@ -738,8 +714,10 @@ drawline(Line line, int x1, int y1, int x2)
 		new = line[x];
 		if (new.mode == ATTR_WDUMMY)
 			continue;
+		/*
 		if (selected(x, y1))
 			new.mode ^= ATTR_REVERSE;
+		*/
 		//if (i > 0 && ATTRCMP(base, new)) {
 		if (i > 0) {
 			_drawglyph(base, i, ox, y1);
@@ -877,7 +855,7 @@ handle_window(SDL_Event *ev)
 {
 	switch(ev->window.event) {
 		case SDL_WINDOWEVENT_CLOSE:
-			die("");
+			exit(0);
 			break;
 		case SDL_WINDOWEVENT_RESIZED:
 			resize(ev->window.data1, ev->window.data2);
@@ -941,7 +919,8 @@ handle_textinput(SDL_Event *ev)
 void
 run()
 {
-	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 60 };
+
+	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 1e3 };
 
 	SDL_Event event;
 	int w = win.w, h = win.h;
@@ -986,21 +965,21 @@ run()
 			}
 		}
 
+
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
 		{
-			SDL_RenderClear(win.rnd);
-
 			if (opt_anim) {
 				animate();
+				SDL_SetRenderTarget(win.rnd, 0);
 				SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
 			}
 
+			SDL_SetRenderTarget(win.rnd, win.txt);
 			draw();
 
-			SDL_Texture *txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
-			SDL_RenderCopy(win.rnd, txt, 0, 0);
-			SDL_DestroyTexture(txt);
+			SDL_SetRenderTarget(win.rnd, 0);
+			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
 
 			SDL_RenderPresent(win.rnd);
 		}

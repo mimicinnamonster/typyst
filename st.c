@@ -713,7 +713,7 @@ execsh(char *cmd, char **args)
 	signal(SIGALRM, SIG_DFL);
 
 	execvp(prog, args);
-	_exit(1);
+	exit(1);
 }
 
 void
@@ -732,7 +732,7 @@ sigchld(int a)
 		die("child exited with status %d\n", WEXITSTATUS(stat));
 	else if (WIFSIGNALED(stat))
 		die("child terminated due to signal %d\n", WTERMSIG(stat));
-	_exit(0);
+	exit(0);
 }
 
 void
