@@ -46,7 +46,6 @@ typedef struct {
 /* function definitions used in config.h */
 static void clippaste(const Arg *);
 static void numlock(const Arg *);
-static void selpaste(const Arg *);
 static void zoom(const Arg *);
 static void zoomabs(const Arg *);
 static void zoomreset(const Arg *);
@@ -76,13 +75,6 @@ typedef struct {
 	int mode; /* window state/mode flags */
 	int cursor; /* cursor style */
 } TermWindow;
-
-typedef struct {
-	Atom xtarget;
-	char *primary, *clipboard;
-	struct timespec tclick1;
-	struct timespec tclick2;
-} XSelection;
 
 /* Font structure */
 #define Font Font_
@@ -132,7 +124,6 @@ static void handle_unmap(SDL_Event *);
 static void handle_window(SDL_Event *);
 static void handle_focus();
 
-static void _setsel(char *, Time);
 static char *kmap(KeySym, uint);
 static int match(uint, uint);
 
@@ -141,7 +132,6 @@ static void usage(void);
 
 /* Globals */
 static DC dc;
-static XSelection xsel;
 static TermWindow win;
 
 static const FONTCACHESIZE = USHRT_MAX;
@@ -166,19 +156,11 @@ static int oldbutton = 3; /* button event on startup: 3 = release */
 void
 clipcopy(const Arg *dummy)
 {
-	// TODO: xsel.cliboard, xsel.primary
 }
 
 void
 clippaste(const Arg *dummy)
 {
-	// TODO: xsel.xtarget, convert clipboard to selection
-}
-
-void
-selpaste(const Arg *dummy)
-{
-	// TODO: xsel.xtarget
 }
 
 void
@@ -233,30 +215,6 @@ evrow(SDL_Event *e)
 {
 	// TODO: evrow
 	return 0;
-}
-
-void
-selnotify(SDL_Event *e)
-{
-	// TODO: selnotify
-}
-
-void
-selrequest(SDL_Event *e)
-{
-	// TODO: selrequest
-}
-
-void
-_setsel(char *str, Time t)
-{
-	// TODO: setsel
-}
-
-void
-setsel(char *str)
-{
-	_setsel(str, CurrentTime);
 }
 
 void
@@ -483,7 +441,6 @@ void
 init()
 {
 	tnew(MAX(cols, 1), MAX(rows, 1));
-	selinit();
 
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
@@ -522,11 +479,6 @@ init()
 	{
 		win.mode = MODE_NUMLOCK;
 		resettitle();
-
-		clock_gettime(CLOCK_MONOTONIC, &xsel.tclick1);
-		clock_gettime(CLOCK_MONOTONIC, &xsel.tclick2);
-		xsel.primary = NULL;
-		xsel.clipboard = NULL;
 	}
 
 	if (opt_anim)
@@ -714,10 +666,6 @@ drawline(Line line, int x1, int y1, int x2)
 		new = line[x];
 		if (new.mode == ATTR_WDUMMY)
 			continue;
-		/*
-		if (selected(x, y1))
-			new.mode ^= ATTR_REVERSE;
-		*/
 		//if (i > 0 && ATTRCMP(base, new)) {
 		if (i > 0) {
 			_drawglyph(base, i, ox, y1);
