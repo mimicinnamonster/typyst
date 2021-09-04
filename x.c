@@ -66,7 +66,7 @@ typedef unsigned int Color;
 typedef struct {
 	SDL_Window *wnd;
 	SDL_Renderer *rnd;
-	SDL_Texture *txt;
+	SDL_Surface *txt;
 
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
@@ -234,9 +234,9 @@ resize(int width, int height)
 	#endif
 
 	// resize text texture
-	SDL_DestroyTexture(win.txt);
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, width, height);
-	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
+	SDL_FreeSurface(win.txt);
+	win.txt = SDL_CreateRGBSurface(0, width, height, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+	SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 	tresize(cols, rows);
 	ttyresize(win.tw, win.th);
@@ -315,8 +315,7 @@ setcolorname(int x, const char *name)
 void
 _clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
-	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
-	SDL_RenderFillRect(win.rnd, &(SDL_Rect){x1, y1, x2-x1, y2-y1});
+	SDL_FillRect(win.txt, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.txt->format, col->red, col->green, col->blue, col->alpha));
 }
 
 int
@@ -469,8 +468,8 @@ init()
 		SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
 
 		// create main text surface
-		win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_TARGET, w, h);
-		SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
+		win.txt = SDL_CreateRGBSurface(0, w, h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+		SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 		// screen size based on glyph width
 		resize(w, h);
@@ -601,24 +600,20 @@ _drawglyph(Glyph base, int len, int x, int y)
 	}
 
 	if (!ftxt) {
-		SDL_Surface* bitmap;
 
 		if (isEmoji) {
 			char text[5];
 			utf8encode(base.u, text);
-			bitmap = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
+			ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
 		}
 		else {
-			bitmap = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
+			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 		}
 
 
 		#ifdef DEBUG
 		printf("making cache for glyph %d\n", base.u);
 		#endif
-
-		ftxt = SDL_CreateTextureFromSurface(win.rnd, bitmap);
-		SDL_FreeSurface(bitmap);
 
 		// TODO: underline, strikethrough
 	}
@@ -627,8 +622,8 @@ _drawglyph(Glyph base, int len, int x, int y)
 		f->cache[base.u] = ftxt;
 	}
 
-	SDL_RenderCopy(win.rnd, ftxt, 0, &(SDL_Rect){winx, winy, width, win.ch});
-	}
+	SDL_BlitScaled(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
+}
 
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
@@ -923,12 +918,11 @@ run()
 				SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
 			}
 
-			SDL_SetRenderTarget(win.rnd, win.txt);
 			draw();
 
-			SDL_SetRenderTarget(win.rnd, 0);
-			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
-
+			SDL_Texture *txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
+			SDL_RenderCopy(win.rnd, txt, 0, 0);
+			SDL_DestroyTexture(txt);
 			SDL_RenderPresent(win.rnd);
 		}
 	}
