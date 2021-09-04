@@ -1,221 +1,59 @@
 #include <malloc.h>
 #include <errno.h>
-#include <math.h>
-#include <limits.h>
 #include <locale.h>
-#include <signal.h>
-#include <sys/select.h>
 #include <time.h>
-#include <unistd.h>
-#include <libgen.h>
-#include <X11/Xlib.h>
-#include <X11/cursorfont.h>
-#include <X11/keysym.h>
-#include <X11/Xft/Xft.h>
-#include <X11/XKBlib.h>
+#include <sys/select.h>
+
+#include <fontconfig/fontconfig.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
 
-char *argv0;
-#include "arg.h"
 #include "st.h"
-#include "win.h"
-
-/* types used in config.h */
-typedef struct {
-	uint mod;
-	KeySym keysym;
-	void (*func)(const Arg *);
-	const Arg arg;
-} Shortcut;
-
-typedef struct {
-	KeySym k;
-	uint mask;
-	char *s;
-	/* three-valued logic variables: 0 indifferent, 1 on, -1 off */
-	signed char appkey;		/* application keypad */
-	signed char appcursor; /* application cursor */
-} Key;
-
-/* X modifiers */
-#define XK_ANY_MOD		UINT_MAX
-#define XK_NO_MOD		 0
-#define XK_SWITCH_MOD (1<<13)
-
-/* function definitions used in config.h */
-static void clippaste(const Arg *);
-static void numlock(const Arg *);
-static void zoom(const Arg *);
-static void zoomabs(const Arg *);
-static void zoomreset(const Arg *);
-static void ttysend(const Arg *);
-
-/* config.h for applying patches and the configuration. */
+#include "arg.h"
+#include "main.h"
 #include "config.h"
 
-/* macros */
-#define IS_SET(flag)		((win.mode & (flag)) != 0)
-#define TRUERED(x)		(((x) & 0xff0000) >> 8)
-#define TRUEGREEN(x)		(((x) & 0xff00))
-#define TRUEBLUE(x)		(((x) & 0xff) << 8)
-
-typedef unsigned int Color;
-
-/* Purely graphic info */
-typedef struct {
-	SDL_Window *wnd;
-	SDL_Renderer *rnd;
-	SDL_Surface *txt;
-
-	int w, h; /* window width and height */
-	int cw, ch; /* char width and height */
-	int tw, th; /* tty width and height */
-
-	int mode; /* window state/mode flags */
-	int cursor; /* cursor style */
-} TermWindow;
-
-/* Font structure */
-#define Font Font_
-typedef struct {
-	int height;
-	int width;
-	int ascent;
-	int descent;
-	int badslant;
-	int badweight;
-	FcFontSet *set;
-	FcPattern *pattern;
-	FcPattern *match;
-	FcCharSet *charset;
-	TTF_Font *ttf;
-	SDL_Texture **cache;
-} Font;
-
-typedef struct {
-	Font font, bfont, ifont, ibfont;
-} FontSet;
-
-/* Drawing Context */
-typedef struct {
-	RenderColor *col;
-	size_t collen;
-	FontSet *fontsets;
-	size_t fontsetlen;
-} DC;
-
 static inline ushort sixd_to_16bit(int);
-static void _drawglyph(Glyph, int, int, int);
-static void _clear(int, int, int, int, RenderColor *);
+static void drawglyph(Glyph, int, int, int);
+static void clear(int, int, int, int, RenderColor *);
 static void init();
 static void resize(int, int);
 static int loadcolor(int, const char *, RenderColor *);
 static int loadfont(Font *, FcPattern *);
 static int loadfontset(const char *, double);
-static int evcol(SDL_Event *);
-static int evrow(SDL_Event *);
 
-static void handle_textinput(SDL_Event *);
-static void handle_keypress(SDL_Event *);
-static void handle_expose(SDL_Event *);
-static void handle_visibility(SDL_Event *);
-static void handle_unmap(SDL_Event *);
-static void handle_window(SDL_Event *);
-static void handle_focus();
+static const size_t FONTCACHESIZE = 0; // TODO: USHRT_MAX;
 
-static char *kmap(KeySym, uint);
-static int match(uint, uint);
+TermWindow win;
+Animation anim;
 
-static void run(void);
-static void usage(void);
+static DrawingContext dc;
 
-/* Globals */
-static DC dc;
-static TermWindow win;
-
-static const FONTCACHESIZE = 0; // TODO: USHRT_MAX;
-
-static char *usedfont = NULL;
 static double usedfontsize = 0;
-static double defaultfontsize = 0;
 
-static char *opt_alpha = NULL;
-static char *opt_class = NULL;
 static char **opt_cmd	= NULL;
-static char *opt_embed = NULL;
-static char *opt_font	= NULL;
-static char *opt_io		= NULL;
+static char *opt_embed  = NULL;
+static char *opt_io	= NULL;
 static char *opt_line	= NULL;
-static char *opt_name	= NULL;
-static char *opt_title = NULL;
-static char *opt_anim = NULL;
+static char *opt_anim   = NULL;
 
-static int oldbutton = 3; /* button event on startup: 3 = release */
+void bell()
+{
+	// TODO: bell
+}
+
 
 void
-clipcopy(const Arg *dummy)
+setmode(int set, unsigned int flags)
 {
+	int mode = win.mode;
+	MODBIT(win.mode, set, flags);
+	/* TODO: redraw
+	if ((win.mode & MODE_REVERSE) != (mode & MODE_REVERSE))
+		redraw();
+	*/
 }
 
-void
-clippaste(const Arg *dummy)
-{
-}
-
-void
-numlock(const Arg *dummy)
-{
-	win.mode ^= MODE_NUMLOCK;
-}
-
-void
-zoom(const Arg *arg)
-{
-	Arg larg;
-
-	larg.f = usedfontsize + arg->f;
-	zoomabs(&larg);
-}
-
-void
-zoomabs(const Arg *arg)
-{
-	loadfontset(usedfont, arg->f);
-	resize(0, 0);
-	redraw();
-}
-
-void
-zoomreset(const Arg *arg)
-{
-	Arg larg;
-
-	if (defaultfontsize > 0) {
-		larg.f = defaultfontsize;
-		zoomabs(&larg);
-	}
-}
-
-void
-ttysend(const Arg *arg)
-{
-	ttywrite(arg->s, strlen(arg->s), 1);
-}
-
-int
-evcol(SDL_Event *e)
-{
-	// TODO: evcol
-	return 0;
-}
-
-int
-evrow(SDL_Event *e)
-{
-	// TODO: evrow
-	return 0;
-}
 
 void
 resize(int width, int height)
@@ -271,6 +109,7 @@ loadcolor(int i, const char *name, RenderColor *color)
 		}
 	}
 
+	dc.col[defaultbg].alpha = 255 * alpha;
 	return 1;
 }
 
@@ -290,9 +129,6 @@ loadcols(void)
 		loadcolor(i, NULL, &dc.col[i]);
 	}
 
-	/* set alpha value of bg color */
-	if (opt_alpha) alpha = strtof(opt_alpha, NULL);
-	dc.col[defaultbg].alpha = 255 * alpha;
 	loaded = 1;
 }
 
@@ -313,7 +149,7 @@ setcolorname(int x, const char *name)
 }
 
 void
-_clear(int x1, int y1, int x2, int y2, RenderColor *col)
+clear(int x1, int y1, int x2, int y2, RenderColor *col)
 {
 	SDL_FillRect(win.txt, &(SDL_Rect){x1, y1, x2-x1, y2-y1}, SDL_MapRGBA(win.txt->format, col->red, col->green, col->blue, col->alpha));
 }
@@ -345,13 +181,6 @@ loadfont(Font *f, FcPattern *pattern)
 
 	// TODO: hinting
 	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
-
-	/*
-	TODO: printable extents
-	XftTextExtentsUtf8(xw.dpy, f->match,
-		(const FcChar8 *) ascii_printable,
-		strlen(ascii_printable), &extents);
-	*/
 
 	f->set = NULL;
 	f->badslant = 0;
@@ -401,7 +230,6 @@ loadfontset(const char *fontstr, double fontsize)
 			FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
 			usedfontsize = 12;
 		}
-		defaultfontsize = usedfontsize;
 	}
 
 	if (loadfont(&fontset->font, pattern))
@@ -410,8 +238,6 @@ loadfontset(const char *fontstr, double fontsize)
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
 		usedfontsize = fontval;
-		if (fontsize == 0)
-			defaultfontsize = fontval;
 	}
 
 	FcPatternDel(pattern, FC_SLANT);
@@ -434,8 +260,6 @@ loadfontset(const char *fontstr, double fontsize)
 	return dc.fontsetlen-1;
 }
 
-#include "gif.c"
-
 void
 init()
 {
@@ -445,43 +269,36 @@ init()
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
 	SDL_StartTextInput();
 
-	usedfont = (opt_font == NULL)? font : opt_font;
+	loadfontset(font, 0);
+	win.cw = ceilf(dc.fontsets->font.width);
+	win.ch = ceilf(dc.fontsets->font.height);
 
-	loadfontset(usedfont, 0);
-	win.cw = ceilf(dc.fontsets->font.width * cwscale);
-	win.ch = ceilf(dc.fontsets->font.height * chscale);
-
-	loadfontset("noto color emoji", 0);
-
+	loadfontset(font2, 0);
 	loadcols();
 
 	// prepare sdl window
-	{
-		if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+	if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 
-		SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
-		int w = cols * win.cw;
-		int h = rows * win.ch;
+	int w = cols * win.cw;
+	int h = rows * win.ch;
 
-		// create window and renderer
-		SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
+	// create window and renderer
+	SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
 
-		// screen size based on glyph width
-		resize(w, h);
-	}
+	// screen size based on glyph width
+	resize(w, h);
 
-	{
-		win.mode = MODE_NUMLOCK;
-		resettitle();
-	}
+	settitle("typyst");
+	win.mode = MODE_NUMLOCK;
 
 	if (opt_anim)
 		initanim(opt_anim);
 }
 
 void
-_drawglyph(Glyph base, int len, int x, int y)
+drawglyph(Glyph base, int len, int x, int y)
 {
 	FontSet *fontset = &dc.fontsets[0];
 
@@ -586,7 +403,7 @@ _drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
-	_clear(winx, winy, winx+width, winy+win.ch, bg);
+	clear(winx, winy, winx+width, winy+win.ch, bg);
 
 	SDL_Texture *ftxt = 0;
 
@@ -629,11 +446,11 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 	int tmp = g.fg;
 	g.fg = g.bg;
 	g.bg = tmp;
-	_drawglyph(g, 1, cx, cy);
+	drawglyph(g, 1, cx, cy);
 
 	// refresh old cursor's cell
 	if (cx != ox || cy != oy)
-		_drawglyph(og, 1, ox, oy);
+		drawglyph(og, 1, ox, oy);
 }
 
 void
@@ -661,7 +478,7 @@ drawline(Line line, int x1, int y1, int x2)
 			continue;
 		//if (i > 0 && ATTRCMP(base, new)) {
 		if (i > 0) {
-			_drawglyph(base, i, ox, y1);
+			drawglyph(base, i, ox, y1);
 			i = 0;
 		}
 		if (i == 0) {
@@ -671,124 +488,12 @@ drawline(Line line, int x1, int y1, int x2)
 		i++;
 	}
 	if (i > 0)
-		_drawglyph(base, i, ox, y1);
+		drawglyph(base, i, ox, y1);
 }
 
 void
 finishdraw(void)
 {
-	#if 0
-	XCopyArea(xw.dpy, xw.buf, xw.win, dc.gc, 0, 0, win.w,
-			win.h, 0, 0);
-	XSetForeground(xw.dpy, dc.gc,
-			dc.col[IS_SET(MODE_REVERSE)?
-				defaultfg : defaultbg].pixel);
-	#endif
-}
-
-void
-handle_expose(SDL_Event *ev)
-{
-	redraw();
-}
-
-void
-handle_visibility(SDL_Event *ev)
-{
-	// TODO: MODBIT(win.mode, e->state != handle_visibilityFullyObscured, MODE_VISIBLE);
-}
-
-void
-handle_unmap(SDL_Event *ev)
-{
-	win.mode &= ~MODE_VISIBLE;
-}
-
-void
-setmode(int set, unsigned int flags)
-{
-	int mode = win.mode;
-	MODBIT(win.mode, set, flags);
-	if ((win.mode & MODE_REVERSE) != (mode & MODE_REVERSE))
-		redraw();
-}
-
-int
-setcursor(int cursor)
-{
-	if (!BETWEEN(cursor, 0, 7)) /* 7: st extension */
-		return 1;
-	win.cursor = cursor;
-	return 0;
-}
-
-void
-bell(void)
-{
-	// TODO: bell
-}
-
-void
-handle_focus()
-{
-	#if 0
-	if (ev->type == handle_focusIn) {
-		if (xw.ime.xic)
-			XSetIChandle_focus(xw.ime.xic);
-		win.mode |= MODE_handle_focusED;
-		if (IS_SET(MODE_handle_focus))
-			ttywrite("\033[I", 3, 0);
-	} else {
-		if (xw.ime.xic)
-			XUnsetIChandle_focus(xw.ime.xic);
-		win.mode &= ~MODE_handle_focusED;
-		if (IS_SET(MODE_handle_focus))
-			ttywrite("\033[O", 3, 0);
-	}
-	#endif
-}
-
-int
-match(uint mask, uint state)
-{
-	return mask == XK_ANY_MOD || mask == (state & ~ignoremod);
-}
-
-char*
-kmap(KeySym k, uint state)
-{
-	Key *kp;
-	int i;
-
-	/* Check for mapped keys out of X11 function keys. */
-	for (i = 0; i < LEN(mappedkeys); i++) {
-		if (mappedkeys[i] == k)
-			break;
-	}
-	if (i == LEN(mappedkeys)) {
-		if ((k & 0xFFFF) < 0xFD00)
-			return NULL;
-	}
-
-	for (kp = key; kp < key + LEN(key); kp++) {
-		if (kp->k != k)
-			continue;
-
-		if (!match(kp->mask, state))
-			continue;
-
-		if (IS_SET(MODE_APPKEYPAD) ? kp->appkey < 0 : kp->appkey > 0)
-			continue;
-		if (IS_SET(MODE_NUMLOCK) && kp->appkey == 2)
-			continue;
-
-		if (IS_SET(MODE_APPCURSOR) ? kp->appcursor < 0 : kp->appcursor > 0)
-			continue;
-
-		return kp->s;
-	}
-
-	return NULL;
 }
 
 void
@@ -876,21 +581,18 @@ run()
 		shouldRender = 0;
 
 		// tty events
-		{
-			if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
-				if (errno == EINTR) continue;
-				die("select failed: %s\n", strerror(errno));
-			}
-			if (FD_ISSET(ttyfd, &rfd)) {
-				ttyread();
-				shouldRender = 1;
-			}
+		if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
+			if (errno == EINTR) continue;
+			die("select failed: %s\n", strerror(errno));
+		}
+		if (FD_ISSET(ttyfd, &rfd)) {
+			ttyread();
+			shouldRender = 1;
 		}
 
 		// host events
 		while (SDL_PollEvent(&event)) {
 			switch(event.type) {
-
 				case SDL_TEXTINPUT:
 					handle_textinput(&event);
 					break;
@@ -902,22 +604,13 @@ run()
 				case SDL_KEYDOWN:
 					handle_keypress(&event);
 					break;
-
-				//[SDL_WindowEvent] = handle_window,
-				//[SDL_WindowEvent] = handle_resize,
-				//[SDL_WindowEvent] = handle_focus,
-				//[SDL_WindowEvent] = handle_visibility,
-				//[SDL_WindowEvent] = handle_unmap,
-				//[SDL_WindowEvent] = handle_expose,
 			}
 		}
 
-
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
-		if (shouldRender) {
+		if (shouldRender)
 			SDL_RenderClear(win.rnd);
-		}
 
 		if (opt_anim) {
 			int last = anim.curr;
@@ -942,39 +635,21 @@ run()
 void
 usage(void)
 {
-	die("usage: %s [-aiv] [-c class] [-f font] [-g geometry]"
-			" [-n name] [-o file]\n"
-			"					[-T title] [-t title] [-w windowid]"
-			" [[-e] command [args ...]]\n"
-			"			 %s [-aiv] [-c class] [-f font] [-g geometry]"
-			" [-n name] [-o file]\n"
-			"					[-T title] [-t title] [-w windowid] -l line"
-			" [stty_args ...]\n", argv0, argv0);
+	die("");
 }
-
 
 int
 main(int argc, char *argv[])
 {
 	setlocale(LC_CTYPE, "");
-	setcursor(cursorshape);
 
 	ARGBEGIN {
 	case 'a':
 		opt_anim = EARGF(usage());
 		break;
-	case 'A':
-		opt_alpha = EARGF(usage());
-		break;
-	case 'c':
-		opt_class = EARGF(usage());
-		break;
 	case 'e':
 		if (argc > 0)
 			--argc, ++argv;
-		goto run;
-	case 'f':
-		opt_font = EARGF(usage());
 		break;
 	case 'o':
 		opt_io = EARGF(usage());
@@ -982,28 +657,15 @@ main(int argc, char *argv[])
 	case 'l':
 		opt_line = EARGF(usage());
 		break;
-	case 'n':
-		opt_name = EARGF(usage());
-		break;
-	case 't':
-	case 'T':
-		opt_title = EARGF(usage());
-		break;
-	case 'w':
-		opt_embed = EARGF(usage());
-		break;
 	case 'v':
-		die("%s " VERSION "\n", argv0);
+		die("%s " VERSION "\n");
 		break;
 	default:
 		usage();
 	} ARGEND;
 
-run:
 	/* eat all remaining arguments */
 	if (argc > 0) opt_cmd = argv;
-
-	if (!opt_title) opt_title = (opt_line || !opt_cmd) ? "st" : opt_cmd[0];
 
 	init();
 	run();

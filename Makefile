@@ -1,57 +1,53 @@
-# st - simple terminal
-# See LICENSE file for copyright and license details.
 .POSIX:
 
-include config.mk
+NAME = typyst
+VERSION = 0.1
+INSTALL_DIR = ~/.local/bin
+BUILD_DIR = _build
+PKG_CONFIG = pkg-config
+SDL_CONFIG = ./sdl2/install/bin/sdl2-config
+SRC = $(wildcard src/*.c)
 
-SRC = st.c x.c
-OBJ = $(SRC:.c=.o)
+OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
+INCS = `$(PKG_CONFIG) --cflags fontconfig` `$(SDL_CONFIG) --cflags`
+LIBS = -lutil `$(PKG_CONFIG) --libs fontconfig` `$(SDL_CONFIG) --libs` -lSDL2_ttf
+EXE = $(BUILD_DIR)/$(NAME)
+STCPPFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600
+STCFLAGS = $(INCS) $(STCPPFLAGS) $(CPPFLAGS) $(CFLAGS)
+STLDFLAGS = $(LIBS) $(LDFLAGS)
 
-all: options typyst
+all: options $(EXE)
 
 options:
-	@echo st build options:
+	@echo build options:
 	@echo "CFLAGS  = $(STCFLAGS)"
 	@echo "LDFLAGS = $(STLDFLAGS)"
 	@echo "CC      = $(CC)"
 
-config.h:
-	cp config.def.h config.h
+build_dir:
+	mkdir -p $(BUILD_DIR)
 
-.c.o:
-	$(CC) $(STCFLAGS) -c $<
+$(BUILD_DIR)/%.o: src/%.c | build_dir
+	$(CC) -o $@ $(STCFLAGS) -c $<
 
-st.o: config.h st.h win.h
-x.o: arg.h config.h st.h win.h
-
-$(OBJ): config.h config.mk
-
-typyst: $(OBJ)
+$(EXE): $(OBJ) | build_dir
 	$(CC) -o $@ $(OBJ) $(STLDFLAGS)
 
+run: $(EXE)
+	$(EXE)
+
+test: clean $(EXE)
+	$(EXE) ./test.sh
+
 clean:
-	rm -f st $(OBJ) st-$(VERSION).tar.gz
+	rm -rf $(BUILD_DIR)
 
-dist: clean
-	mkdir -p st-$(VERSION)
-	cp -R FAQ LEGACY TODO LICENSE Makefile README config.mk\
-		config.def.h st.info st.1 arg.h st.h win.h $(SRC)\
-		st-$(VERSION)
-	tar -cf - st-$(VERSION) | gzip > st-$(VERSION).tar.gz
-	rm -rf st-$(VERSION)
-
-install: typyst
-	mkdir -p $(DESTDIR)$(PREFIX)/bin
-	cp -f st $(DESTDIR)$(PREFIX)/bin
-	chmod 755 $(DESTDIR)$(PREFIX)/bin/st
-	mkdir -p $(DESTDIR)$(MANPREFIX)/man1
-	sed "s/VERSION/$(VERSION)/g" < st.1 > $(DESTDIR)$(MANPREFIX)/man1/st.1
-	chmod 644 $(DESTDIR)$(MANPREFIX)/man1/st.1
-	tic -sx st.info
-	@echo Please see the README file regarding the terminfo entry of st.
+install: $(EXE)
+	mkdir -p $(INSTALL_DIR)
+	cp -f $(EXE) $(INSTALL_DIR)
+	# tic -sx tic.info
 
 uninstall:
-	rm -f $(DESTDIR)$(PREFIX)/bin/st
-	rm -f $(DESTDIR)$(MANPREFIX)/man1/st.1
+	rm -f $(INSTALL_DIR)/$(NAME)
 
-.PHONY: all options clean dist install uninstall
+.PHONY: all options clean install uninstall

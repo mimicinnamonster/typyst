@@ -1,4 +1,5 @@
-/* See LICENSE for license details. */
+#ifndef ST_H
+#define ST_H
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -124,3 +125,5 @@ extern unsigned int tabspaces;
 extern unsigned int defaultfg;
 extern unsigned int defaultbg;
 extern float alpha;
+
+#endif

@@ -1,0 +1,106 @@
+#ifndef MAIN_H
+#define MAIN_H
+
+#include <fontconfig/fontconfig.h>
+#include <SDL.h>
+#include <SDL_ttf.h>
+#include "arg.h"
+#include "st.h"
+
+#define IS_SET(flag)		((win.mode & (flag)) != 0)
+#define TRUERED(x)		(((x) & 0xff0000) >> 8)
+#define TRUEGREEN(x)		(((x) & 0xff00))
+#define TRUEBLUE(x)		(((x) & 0xff) << 8)
+
+typedef unsigned int Color;
+
+typedef struct {
+	unsigned char red;
+	unsigned char green;
+	unsigned char blue;
+	unsigned char alpha;
+} RenderColor;
+
+typedef struct {
+	SDL_Window *wnd;
+	SDL_Renderer *rnd;
+	SDL_Surface *txt;
+	int w, h; /* window width and height */
+	int cw, ch; /* char width and height */
+	int tw, th; /* tty width and height */
+	int mode; /* window state/mode flags */
+	int cursor; /* cursor style */
+} TermWindow;
+
+typedef struct {
+	int height;
+	int width;
+	int ascent;
+	int descent;
+	int badslant;
+	int badweight;
+	FcFontSet *set;
+	FcPattern *pattern;
+	FcPattern *match;
+	FcCharSet *charset;
+	TTF_Font *ttf;
+	SDL_Texture **cache;
+} Font;
+
+typedef struct {
+	Font font, bfont, ifont, ibfont;
+} FontSet;
+
+typedef struct {
+	RenderColor *col;
+	size_t collen;
+	FontSet *fontsets;
+	size_t fontsetlen;
+} DrawingContext;
+
+typedef struct {
+	struct timespec last;
+	int curr;
+	SDL_Texture **frame;
+	int *duration;
+	int frames;
+} Animation;
+
+enum win_mode {
+	MODE_VISIBLE     = 1 << 0,
+	MODE_FOCUSED     = 1 << 1,
+	MODE_APPKEYPAD   = 1 << 2,
+	MODE_MOUSEBTN    = 1 << 3,
+	MODE_MOUSEMOTION = 1 << 4,
+	MODE_REVERSE     = 1 << 5,
+	MODE_KBDLOCK     = 1 << 6,
+	MODE_HIDE        = 1 << 7,
+	MODE_APPCURSOR   = 1 << 8,
+	MODE_MOUSESGR    = 1 << 9,
+	MODE_8BIT        = 1 << 10,
+	MODE_BLINK       = 1 << 11,
+	MODE_FBLINK      = 1 << 12,
+	MODE_FOCUS       = 1 << 13,
+	MODE_MOUSEX10    = 1 << 14,
+	MODE_MOUSEMANY   = 1 << 15,
+	MODE_BRCKTPASTE  = 1 << 16,
+	MODE_NUMLOCK     = 1 << 17,
+	MODE_MOUSE       = MODE_MOUSEBTN|MODE_MOUSEMOTION|MODE_MOUSEX10\
+	                  |MODE_MOUSEMANY,
+};
+
+void bell(void);
+void clipcopy(const Arg *dummy);
+void drawcursor(int, int, Glyph, int, int, Glyph);
+void drawline(Line, int, int, int);
+void finishdraw(void);
+void loadcols(void);
+int setcolorname(int, const char *);
+void settitle(char *);
+int setcursor(int);
+void setmode(int, unsigned int);
+void setpointermotion(int);
+void setsel(char *);
+int startdraw(void);
+
+#endif

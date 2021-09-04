@@ -1,21 +1,17 @@
 #include <time.h>
 #include <malloc.h>
+
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL2_rotozoom.h>
+
+#include "main.h"
+
 #include "gifdec/gifdec.h"
 #include "gifdec/gifdec.c"
 
-typedef struct {
-	struct timespec last;
-	int curr;
-	SDL_Texture **frame;
-	int *duration;
-	int frames;
-
-} Animation;
-
-Animation anim;
+extern Animation anim;
+extern TermWindow win;
 
 void
 convert(gd_GIF *gif, unsigned char *gifpixels, SDL_Surface *frame)

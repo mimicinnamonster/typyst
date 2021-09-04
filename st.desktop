@@ -1,9 +1,0 @@
-[Desktop Entry]
-Type=Application
-Comment=st is a simple terminal implementation for X
-Name=st
-Exec=st bash -c 'tmux new; until ! tmux attach; do :; done'
-Icon=gnome-terminal
-Icon=utilities-terminal
-Terminal=false
-Categories=System;TerminalEmulator;

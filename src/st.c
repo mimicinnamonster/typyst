@@ -18,7 +18,7 @@
 #include <wchar.h>
 
 #include "st.h"
-#include "win.h"
+#include "main.h"
 
 #if   defined(__linux)
  #include <pty.h>
@@ -1508,14 +1508,7 @@ csihandle(void)
 		tcursor(CURSOR_LOAD);
 		break;
 	case ' ':
-		switch (csiescseq.mode[1]) {
-		case 'q': /* DECSCUSR -- Set Cursor Style */
-			if (setcursor(csiescseq.arg[0]))
-				goto unknown;
-			break;
-		default:
-			goto unknown;
-		}
+		goto unknown;
 		break;
 	}
 }
@@ -1574,16 +1567,6 @@ strhandle(void)
 		case 2:
 			if (narg > 1)
 				settitle(strescseq.args[1]);
-			return;
-		case 52:
-			if (narg > 2 && allowwindowops) {
-				dec = base64dec(strescseq.args[2]);
-				if (dec) {
-          clipcopy(NULL);
-				} else {
-					fprintf(stderr, "erresc: invalid base64\n");
-				}
-			}
 			return;
 		case 4: /* color set */
 			if (narg < 3)
