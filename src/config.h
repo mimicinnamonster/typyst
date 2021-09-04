@@ -17,7 +17,7 @@ char *vtiden = "\033[?6c";
 int allowaltscreen = 1;
 
 /* default TERM value */
-char *termname = "st-256color";
+char *termname = "typyst-256color";
 
 /*
  * spaces per tab
@@ -40,22 +40,22 @@ unsigned int tabspaces = 8;
 // st changes colors orders 2,3 with 4,5
 static const RenderColor colorname[] = {
 	/* 8 normal colors */
-	(RenderColor){ .red = 0, .green = 0, .blue = 0, .alpha = 128 },
+	(RenderColor){ .red = 0, .green = 0, .blue = 0, .alpha = 255 },
 	(RenderColor){ .red = 170, .green = 0, .blue = 0, .alpha = 255 },
-	(RenderColor){ .red = 0, .green = 0, .blue = 170, .alpha = 255 },
-	(RenderColor){ .red = 170, .green = 0, .blue = 170, .alpha = 255 },
 	(RenderColor){ .red = 0, .green = 170, .blue = 0, .alpha = 255 },
 	(RenderColor){ .red = 170, .green = 85, .blue = 0, .alpha = 255 },
+	(RenderColor){ .red = 0, .green = 0, .blue = 170, .alpha = 255 },
+	(RenderColor){ .red = 170, .green = 0, .blue = 170, .alpha = 255 },
 	(RenderColor){ .red = 0, .green = 170, .blue = 170, .alpha = 255 },
 	(RenderColor){ .red = 170, .green = 170, .blue = 170, .alpha = 255 },
 
 	/* 8 bright colors */
 	(RenderColor){ .red = 85, .green = 85, .blue = 85, .alpha = 255 },
 	(RenderColor){ .red = 255, .green = 85, .blue = 85, .alpha = 255 },
-	(RenderColor){ .red = 85, .green = 85, .blue = 255, .alpha = 255 },
-	(RenderColor){ .red = 255, .green = 85, .blue = 255, .alpha = 255 },
 	(RenderColor){ .red = 85, .green = 255, .blue = 85, .alpha = 255 },
 	(RenderColor){ .red = 255, .green = 255, .blue = 85, .alpha = 255 },
+	(RenderColor){ .red = 85, .green = 85, .blue = 255, .alpha = 255 },
+	(RenderColor){ .red = 255, .green = 85, .blue = 255, .alpha = 255 },
 	(RenderColor){ .red = 85, .green = 255, .blue = 255, .alpha = 255 },
 	(RenderColor){ .red = 255, .green = 255, .blue = 255, .alpha = 255 },
 

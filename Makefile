@@ -37,7 +37,7 @@ run: $(EXE)
 	$(EXE)
 
 test: clean $(EXE)
-	$(EXE) ./test.sh
+	$(EXE) bash --init-file ./test.sh
 
 clean:
 	rm -rf $(BUILD_DIR)
@@ -45,7 +45,7 @@ clean:
 install: $(EXE)
 	mkdir -p $(INSTALL_DIR)
 	cp -f $(EXE) $(INSTALL_DIR)
-	# tic -sx tic.info
+	tic -sx tic.info
 
 uninstall:
 	rm -f $(INSTALL_DIR)/$(NAME)

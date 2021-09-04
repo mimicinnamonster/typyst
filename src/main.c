@@ -135,6 +135,10 @@ loadcols(void)
 int
 setcolorname(int x, const char *name)
 {
+	#ifdef DEBUG
+	printf("setcolorname %d, %s\n", x, name);
+	#endif
+
 	RenderColor ncolor;
 
 	if (!BETWEEN(x, 0, dc.collen))
@@ -173,7 +177,7 @@ loadfont(Font *f, FcPattern *pattern)
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, 	&f->charset);
 
 	#ifdef DEBUG
-	printf("file: %s %f\n", filepath, usedfontsize);
+	printf("loading font file: %s, font size: %f\n", filepath, usedfontsize);
 	#endif
 
 	f->ttf = TTF_OpenFont(filepath, usedfontsize);
@@ -190,7 +194,7 @@ loadfont(Font *f, FcPattern *pattern)
 	f->height = TTF_FontHeight(f->ttf);
 
 	#ifdef DEBUG
-	printf("allocating %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
+	printf("allocating font cache %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
 	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
@@ -416,14 +420,14 @@ drawglyph(Glyph base, int len, int x, int y)
 		if (isEmoji) {
 			char text[5];
 			utf8encode(base.u, text);
-			ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->blue, fg->green});
+			ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->green, fg->blue});
 		}
 		else {
-			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
+			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->green, fg->blue});
 		}
 
 		#ifdef DEBUG
-		printf("making cache for glyph %d\n", base.u);
+		//printf("making cache for glyph %d\n", base.u);
 		#endif
 
 		// TODO: underline, strikethrough
