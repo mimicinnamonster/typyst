@@ -75,7 +75,17 @@ animate()
 {
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	unsigned long durr = anim.duration[anim.curr];
+	unsigned long sd = (now.tv_sec - anim.last.tv_sec) * 100;
+	unsigned long nsd = (now.tv_nsec - anim.last.tv_nsec) / 1e7;
+
+	if (sd + nsd < durr)
+		return;
+
+	anim.last = now;
 	anim.curr++;
+
 	if (anim.curr >= anim.frames)
 		anim.curr = 0;
 }

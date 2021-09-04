@@ -619,10 +619,9 @@ run()
 		if (opt_anim) {
 			int last = anim.curr;
 			animate();
-			if (anim.curr != last) {
-				SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
+			SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
+			if (anim.curr != last)
 				shouldRender = 1;
-			}
 		}
 
 		if (shouldRender) {
