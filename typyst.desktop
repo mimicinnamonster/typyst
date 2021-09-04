@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=typyst
-Exec=typyst bash -c 'tmux new; until ! tmux attach; do :; done'
+Exec=typyst -a /home/michal/Videos/smoke.gif bash -c 'tmux new; until ! tmux attach; do :; done'
 Icon=gnome-terminal
 Icon=utilities-terminal
 Terminal=false

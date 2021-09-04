@@ -134,7 +134,7 @@ static void usage(void);
 static DC dc;
 static TermWindow win;
 
-static const FONTCACHESIZE = USHRT_MAX;
+static const FONTCACHESIZE = 0; // TODO: USHRT_MAX;
 
 static char *usedfont = NULL;
 static double usedfontsize = 0;
@@ -234,7 +234,7 @@ resize(int width, int height)
 	#endif
 
 	// resize text texture
-	SDL_FreeSurface(win.txt);
+	if (win.txt) SDL_FreeSurface(win.txt);
 	win.txt = SDL_CreateRGBSurface(0, width, height, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 	SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
@@ -361,7 +361,7 @@ loadfont(Font *f, FcPattern *pattern)
 	f->height = TTF_FontHeight(f->ttf);
 
 	#ifdef DEBUG
-	printf("allocating %ld", FONTCACHESIZE * sizeof(SDL_Surface*));
+	printf("allocating %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
 	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
@@ -466,10 +466,6 @@ init()
 
 		// create window and renderer
 		SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
-
-		// create main text surface
-		win.txt = SDL_CreateRGBSurface(0, w, h, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
-		SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 		// screen size based on glyph width
 		resize(w, h);
@@ -592,7 +588,6 @@ _drawglyph(Glyph base, int len, int x, int y)
 
 	_clear(winx, winy, winx+width, winy+win.ch, bg);
 
-
 	SDL_Texture *ftxt = 0;
 
 	if (base.u < FONTCACHESIZE && f->cache[base.u]) {
@@ -610,7 +605,6 @@ _drawglyph(Glyph base, int len, int x, int y)
 			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->blue, fg->green});
 		}
 
-
 		#ifdef DEBUG
 		printf("making cache for glyph %d\n", base.u);
 		#endif
@@ -623,6 +617,10 @@ _drawglyph(Glyph base, int len, int x, int y)
 	}
 
 	SDL_BlitScaled(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
+
+	if (base.u >= FONTCACHESIZE) {
+		SDL_FreeSurface(ftxt);
+	}
 }
 
 void
@@ -862,17 +860,20 @@ handle_textinput(SDL_Event *ev)
 void
 run()
 {
-
-	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 1e3 };
+	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 30 };
 
 	SDL_Event event;
 	int w = win.w, h = win.h;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 
+	int shouldRender = 0;
+
 	while (1) {
 		FD_ZERO(&rfd);
 		FD_SET(ttyfd, &rfd);
+
+		shouldRender = 0;
 
 		// tty events
 		{
@@ -880,7 +881,10 @@ run()
 				if (errno == EINTR) continue;
 				die("select failed: %s\n", strerror(errno));
 			}
-			if (FD_ISSET(ttyfd, &rfd)) ttyread();
+			if (FD_ISSET(ttyfd, &rfd)) {
+				ttyread();
+				shouldRender = 1;
+			}
 		}
 
 		// host events
@@ -911,15 +915,21 @@ run()
 
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
-		{
-			if (opt_anim) {
-				animate();
-				SDL_SetRenderTarget(win.rnd, 0);
+		if (shouldRender) {
+			SDL_RenderClear(win.rnd);
+		}
+
+		if (opt_anim) {
+			int last = anim.curr;
+			animate();
+			if (anim.curr != last) {
 				SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
+				shouldRender = 1;
 			}
+		}
 
+		if (shouldRender) {
 			draw();
-
 			SDL_Texture *txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
 			SDL_RenderCopy(win.rnd, txt, 0, 0);
 			SDL_DestroyTexture(txt);
