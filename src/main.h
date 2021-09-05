@@ -59,7 +59,6 @@ typedef struct {
 } DrawingContext;
 
 typedef struct {
-	struct timespec last;
 	int curr;
 	SDL_Texture **frame;
 	int *duration;

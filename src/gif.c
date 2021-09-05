@@ -13,22 +13,28 @@
 extern Animation anim;
 extern TermWindow win;
 
+SDL_Surface *tmpsrf;
+gd_GIF *gif;
+unsigned char *tmppixels;
+int decoded = 0;
+struct timespec last;
+
 void
-convert(gd_GIF *gif, unsigned char *gifpixels, SDL_Surface *frame)
+convert()
 {
-	unsigned char *color = gifpixels;
+	unsigned char *color = tmppixels;
 	void *addr;
 	unsigned int pixel;
 
 	for (int i=0; i<gif->height; i++) {
 		for (int j=0; j<gif->width; j++) {
 				if (!gd_is_bgcolor(gif, color))
-						pixel = SDL_MapRGB(frame->format, color[0], color[1], color[2]);
+						pixel = SDL_MapRGB(tmpsrf->format, color[0], color[1], color[2]);
 				else if (((i >> 2) + (j >> 2)) & 1)
-						pixel = SDL_MapRGB(frame->format, 0x7F, 0x7F, 0x7F);
+						pixel = SDL_MapRGB(tmpsrf->format, 0x7F, 0x7F, 0x7F);
 				else
-						pixel = SDL_MapRGB(frame->format, 0x00, 0x00, 0x00);
-				addr = frame->pixels + (i * frame->pitch + j * sizeof(pixel));
+						pixel = SDL_MapRGB(tmpsrf->format, 0x00, 0x00, 0x00);
+				addr = tmpsrf->pixels + (i * tmpsrf->pitch + j * sizeof(pixel));
 				memcpy(addr, &pixel, sizeof(pixel));
 				color += 3;
 		}
@@ -38,52 +44,58 @@ convert(gd_GIF *gif, unsigned char *gifpixels, SDL_Surface *frame)
 void
 initanim(char *filename)
 {
-	gd_GIF *gif = gd_open_gif(filename);
+	gif = gd_open_gif(filename);
+	tmppixels = malloc(gif->width * gif->height * 3);
+	tmpsrf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
 
 	#ifdef DEBUG
 	printf("loaded gif %s\n", filename);
-	printf("  canvas size: %ux%u\n", gif->width, gif->height);
-	printf("  number of colors: %d\n", gif->palette->size);
+	printf("canvas size: %ux%u\n", gif->width, gif->height);
+	printf("number of colors: %d\n", gif->palette->size);
 	#endif
-	
-	unsigned char *gifpixels = malloc(gif->width * gif->height * 3);
+}
 
-	SDL_Surface *srf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
-
-	while (gd_get_frame(gif)) {
-		++anim.frames;
-
-		gd_render_frame(gif, gifpixels);
-		convert(gif, gifpixels, srf);
-
-		anim.duration = realloc(anim.duration, sizeof(SDL_Surface*) * anim.frames);
-		anim.frame = realloc(anim.frame, sizeof(SDL_Surface*) * anim.frames);
-
-		anim.frame[anim.frames-1] = SDL_CreateTextureFromSurface(win.rnd, srf);
-		anim.duration[anim.frames-1] = gif->gce.delay;
+void
+decodeframe()
+{
+	if (decoded || gd_get_frame(gif) <= 0) {
+		decoded = 1;
+		return;
 	}
 
-	SDL_FreeSurface(srf);
+	++anim.frames;
+
+	gd_render_frame(gif, tmppixels);
+	convert();
+
+	anim.duration = realloc(anim.duration, sizeof(SDL_Surface*) * anim.frames);
+	anim.frame = realloc(anim.frame, sizeof(SDL_Surface*) * anim.frames);
+
+	anim.frame[anim.frames-1] = SDL_CreateTextureFromSurface(win.rnd, tmpsrf);
+	anim.duration[anim.frames-1] = gif->gce.delay;
 
 	#ifdef DEBUG
-	printf("  converted frames: %d\n", anim.frames);
+	printf("converted gif frames: %d\n", anim.frames);
 	#endif
+
 }
 
 void
 animate()
 {
+	decodeframe();
+
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);
 
 	unsigned long durr = anim.duration[anim.curr];
-	unsigned long sd = (now.tv_sec - anim.last.tv_sec) * 100;
-	unsigned long nsd = (now.tv_nsec - anim.last.tv_nsec) / 1e7;
+	unsigned long sd = (now.tv_sec - last.tv_sec) * 100;
+	unsigned long nsd = (now.tv_nsec - last.tv_nsec) / 1e7;
 
 	if (sd + nsd < durr)
 		return;
 
-	anim.last = now;
+	last = now;
 	anim.curr++;
 
 	if (anim.curr >= anim.frames)
