@@ -30,6 +30,7 @@ typedef struct {
 	int tw, th; /* tty width and height */
 	int mode; /* window state/mode flags */
 	int cursor; /* cursor style */
+	unsigned int lastfocus;
 } TermWindow;
 
 typedef struct {

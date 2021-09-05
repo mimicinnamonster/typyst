@@ -509,6 +509,9 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_RESIZED:
 			resize(ev->window.data1, ev->window.data2);
 			break;
+		case SDL_WINDOWEVENT_FOCUS_GAINED:
+			win.lastfocus = ev->window.timestamp;
+			break;
 	}
 }
 
@@ -528,7 +531,13 @@ handle_keypress(SDL_Event *ev)
 	int isprint = !(buf[0] & 0x40000000);
 	int isspec = buf[0] < ' ';
 
-	if (!isprint || (!isspec && !isctrl && !isalt))
+	if (!isprint || (!isspec && !isctrl && !isalt)) {
+		return;
+	}
+
+	// workaround for httpps://discourse.libsdl.org/t/alt-tab-in-linux-generates-another-tab/22844
+	// ignore tab if it occured shortly after the window gained focus
+	if (buf[0] == '	' && ev->key.timestamp - win.lastfocus < 10)
 		return;
 
 	if (isctrl && isshift)
@@ -601,11 +610,9 @@ run()
 				case SDL_TEXTINPUT:
 					handle_textinput(&event);
 					break;
-
 				case SDL_WINDOWEVENT:
 					handle_window(&event);
 					break;
-
 				case SDL_KEYDOWN:
 					handle_keypress(&event);
 					break;
