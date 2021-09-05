@@ -68,7 +68,7 @@ resize(int width, int height)
 	win.th = rows * win.ch;
 
 	#ifdef DEBUG
-	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, win.tw, win.th);
+	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
 
 	// resize text texture
@@ -77,7 +77,7 @@ resize(int width, int height)
 	SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 	tresize(cols, rows);
-	ttyresize(win.tw, win.th);
+	ttyresize(cols, rows);
 }
 
 ushort
@@ -291,7 +291,6 @@ init()
 	// create window and renderer
 	SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
 
-	// screen size based on glyph width
 	resize(w, h);
 
 	settitle("typyst");
@@ -572,9 +571,11 @@ run()
 	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 30 };
 
 	SDL_Event event;
-	int w = win.w, h = win.h;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+
+	// send terminal size to the terminal
+	ttyresize(cols, rows);
 
 	int shouldRender = 0;
 
