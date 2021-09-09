@@ -515,13 +515,56 @@ handle_window(SDL_Event *ev)
 	}
 }
 
+char *
+kmap(SDL_KeyboardEvent *ev)
+{
+	for (Key *kp = key; kp < key + LEN(key); kp++) {
+
+		if (ev->keysym.sym != kp->key)
+			continue;
+
+		if (!(ev->keysym.mod & kp->mode))
+			continue;
+
+		#ifdef DEBUG
+		printf("matched kmap %d\n", kp->key);
+		#endif
+
+		if (IS_SET(MODE_APPKEYPAD) ? kp->appkey < 0 : kp->appkey > 0)
+			continue;
+
+		if (IS_SET(MODE_NUMLOCK) && kp->appkey == 2)
+			continue;
+
+		if (IS_SET(MODE_APPCURSOR) ? kp->appcursor < 0 : kp->appcursor > 0)
+			continue;
+
+		return kp->esc;
+	}
+
+	return NULL;
+}
+
 void
 handle_keypress(SDL_Event *ev)
 {
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-	char buf[6] = { ev->key.keysym.sym };
+	#ifdef DEBUG
+	printf("keypress %d %d %d %d\n", ev->key.keysym.sym);
+	#endif
+
+	char *kmapbuf = kmap(ev);
+	if (kmapbuf) {
+		#ifdef DEBUG
+		printf("sending %d %d %d %d\n", kmapbuf[0], kmapbuf[1], kmapbuf[2], kmapbuf[3]);
+		#endif
+		ttywrite(kmapbuf, strlen(kmapbuf), 0);
+		return;
+	}
+
+	char buf[8] = { ev->key.keysym.sym };
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
@@ -529,7 +572,7 @@ handle_keypress(SDL_Event *ev)
 
 	int ismod = isctrl || isshift || isalt;
 	int isprint = !(buf[0] & 0x40000000);
-	int isspec = buf[0] < ' ';
+	int isspec = buf[0] < ' ' || buf[0] > 'z';
 
 	if (!isprint || (!isspec && !isctrl && !isalt)) {
 		return;
@@ -540,10 +583,10 @@ handle_keypress(SDL_Event *ev)
 	if (buf[0] == '	' && ev->key.timestamp - win.lastfocus < 10)
 		return;
 
-	if (isctrl && isshift)
+	if (isctrl && isshift && !isspec)
 			buf[0] -= '@';
 
-	if (isctrl && !isshift)
+	if (isctrl && !isshift && !isspec)
 			buf[0] -= '`';
 
 	if (isalt) {
@@ -552,7 +595,9 @@ handle_keypress(SDL_Event *ev)
 	}
 
 	#ifdef DEBUG
-	printf("key press: %d, mod: %d, print: %d, spec: %x\n", ev->key.keysym.sym, ismod, isprint, isspec);
+	printf("sending %d %d %d %d print:%d, ctrl: %d, shift: %d, alt: %d\n",
+		buf[0], buf[1], buf[2], buf[3],
+		isprint, isctrl, isshift, isalt);
 	#endif
 
 	ttywrite(buf, 1, 1);

@@ -89,6 +89,14 @@ enum win_mode {
 	                  |MODE_MOUSEMANY,
 };
 
+typedef struct {
+	SDL_Keycode key;
+	SDL_Keymod mode;
+	char *esc;
+	int appkey;
+	int appcursor;
+} Key;
+
 void bell(void);
 void clipcopy(const Arg *dummy);
 void drawcursor(int, int, Glyph, int, int, Glyph);
