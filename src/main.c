@@ -429,6 +429,14 @@ drawglyph(Glyph base, int len, int x, int y)
 		//printf("making cache for glyph %d\n", base.u);
 		#endif
 
+		if (base.mode & ATTR_UNDERLINE) {
+			drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
+		}
+
+		if (base.mode & ATTR_STRUCK) {
+			drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
+		}
+
 		// TODO: underline, strikethrough
 	}
 
