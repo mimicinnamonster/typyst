@@ -28,12 +28,10 @@ convert()
 
 	for (int i=0; i<gif->height; i++) {
 		for (int j=0; j<gif->width; j++) {
-				if (!gd_is_bgcolor(gif, color))
-						pixel = SDL_MapRGB(tmpsrf->format, color[0], color[1], color[2]);
-				else if (((i >> 2) + (j >> 2)) & 1)
-						pixel = SDL_MapRGB(tmpsrf->format, 0x7F, 0x7F, 0x7F);
-				else
-						pixel = SDL_MapRGB(tmpsrf->format, 0x00, 0x00, 0x00);
+				int alpha = 255;
+				if (gif->gce.transparency && gd_is_bgcolor(gif, color))
+					alpha = 0;
+				pixel = SDL_MapRGBA(tmpsrf->format, color[0], color[1], color[2], alpha);
 				addr = tmpsrf->pixels + (i * tmpsrf->pitch + j * sizeof(pixel));
 				memcpy(addr, &pixel, sizeof(pixel));
 				color += 3;
