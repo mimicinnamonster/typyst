@@ -28,7 +28,6 @@ TermWindow win;
 Animation anim;
 
 static DrawingContext dc;
-
 static double usedfontsize = 0;
 
 static char **opt_cmd	= NULL;
@@ -505,6 +504,9 @@ drawline(Line line, int x1, int y1, int x2)
 void
 finishdraw(void)
 {
+	if (win.tx_txt)
+		SDL_DestroyTexture(win.tx_txt);
+	win.tx_txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
 }
 
 void
@@ -674,22 +676,27 @@ run()
 
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 
-		if (shouldRender)
+		if (shouldRender) {
 			SDL_RenderClear(win.rnd);
+			draw();
+		}
 
 		if (opt_anim) {
-			int last = anim.curr;
-			animate();
-			SDL_RenderCopy(win.rnd, anim.frame[anim.curr], 0, 0);
-			if (anim.curr != last)
+			if (animate()) {
 				shouldRender = 1;
+				if (anim.curr >= win.tx_anim_len) {
+					win.tx_anim_len = anim.curr+1;
+					win.tx_anim = realloc(win.tx_anim, sizeof(SDL_Texture*) * win.tx_anim_len);
+					win.tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
+				}
+			}
+			if (win.tx_anim_len > anim.curr)
+				SDL_RenderCopy(win.rnd, win.tx_anim[anim.curr], 0, 0);
+
 		}
 
 		if (shouldRender) {
-			draw();
-			SDL_Texture *txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
-			SDL_RenderCopy(win.rnd, txt, 0, 0);
-			SDL_DestroyTexture(txt);
+			SDL_RenderCopy(win.rnd, win.tx_txt, 0, 0);
 			SDL_RenderPresent(win.rnd);
 		}
 	}

@@ -25,6 +25,9 @@ typedef struct {
 	SDL_Window *wnd;
 	SDL_Renderer *rnd;
 	SDL_Surface *txt;
+	SDL_Texture *tx_txt;
+	SDL_Texture **tx_anim;
+	unsigned int tx_anim_len;
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
 	int tw, th; /* tty width and height */
@@ -61,7 +64,7 @@ typedef struct {
 
 typedef struct {
 	int curr;
-	SDL_Texture **frame;
+	SDL_Surface **frame;
 	int *duration;
 	int frames;
 } Animation;
