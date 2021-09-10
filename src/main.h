@@ -48,7 +48,7 @@ typedef struct {
 	FcPattern *match;
 	FcCharSet *charset;
 	TTF_Font *ttf;
-	SDL_Texture **cache;
+	SDL_Surface **cache;
 } Font;
 
 typedef struct {

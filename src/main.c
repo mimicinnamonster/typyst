@@ -22,7 +22,7 @@ static int loadcolor(int, const char *, RenderColor *);
 static int loadfont(Font *, FcPattern *);
 static int loadfontset(const char *, double);
 
-static const size_t FONTCACHESIZE = 0; // TODO: USHRT_MAX;
+#define FONTCACHESIZE 0
 
 TermWindow win;
 Animation anim;
@@ -60,8 +60,8 @@ resize(int width, int height)
 	win.w = width;
 	win.h = height;
 
-	cols = MAX(1, (win.w) / win.cw);
-	rows = MAX(1, (win.h) / win.ch);
+	cols = MAX(1, win.w / win.cw);
+	rows = MAX(1, win.h / win.ch);
 
 	win.tw = cols * win.cw;
 	win.th = rows * win.ch;
@@ -73,7 +73,6 @@ resize(int width, int height)
 	// resize text texture
 	if (win.txt) SDL_FreeSurface(win.txt);
 	win.txt = SDL_CreateRGBSurface(0, width, height, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
-	SDL_SetSurfaceBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -407,7 +406,7 @@ drawglyph(Glyph base, int len, int x, int y)
 
 	clear(winx, winy, winx+width, winy+win.ch, bg);
 
-	SDL_Texture *ftxt = 0;
+	SDL_Surface *ftxt = 0;
 
 	if (base.u < FONTCACHESIZE && f->cache[base.u]) {
 		ftxt = f->cache[base.u];
@@ -424,10 +423,6 @@ drawglyph(Glyph base, int len, int x, int y)
 			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->green, fg->blue});
 		}
 
-		#ifdef DEBUG
-		//printf("making cache for glyph %d\n", base.u);
-		#endif
-
 		if (base.mode & ATTR_UNDERLINE) {
 			drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
 		}
@@ -435,12 +430,14 @@ drawglyph(Glyph base, int len, int x, int y)
 		if (base.mode & ATTR_STRUCK) {
 			drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
 		}
-
-		// TODO: underline, strikethrough
 	}
 
 	if (base.u < FONTCACHESIZE) {
 		f->cache[base.u] = ftxt;
+
+		#ifdef DEBUG
+		printf("making cache for glyph %lc\n", base.u);
+		#endif
 	}
 
 	SDL_BlitScaled(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
@@ -665,11 +662,12 @@ run()
 				case SDL_TEXTINPUT:
 					handle_textinput(&event);
 					break;
-				case SDL_WINDOWEVENT:
-					handle_window(&event);
-					break;
 				case SDL_KEYDOWN:
 					handle_keypress(&event);
+					break;
+				case SDL_WINDOWEVENT:
+					handle_window(&event);
+					shouldRender = 1;
 					break;
 			}
 		}
@@ -696,7 +694,7 @@ run()
 		}
 
 		if (shouldRender) {
-			SDL_RenderCopy(win.rnd, win.tx_txt, 0, 0);
+			SDL_RenderCopy(win.rnd, win.tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){0,0,win.w,win.h});
 			SDL_RenderPresent(win.rnd);
 		}
 	}
