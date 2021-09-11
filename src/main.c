@@ -629,7 +629,7 @@ handle_textinput(SDL_Event *ev)
 void
 run()
 {
-	static const struct timespec timeout = (struct timespec){ .tv_sec = 0, .tv_nsec = 1e9 / 30 };
+	static struct timespec timeout = { .tv_nsec = 1e9 / 30 };
 
 	SDL_Event event;
 	fd_set rfd;
@@ -682,14 +682,16 @@ run()
 		if (opt_anim) {
 			if (animate()) {
 				shouldRender = 1;
-				if (anim.curr >= win.tx_anim_len) {
+				timeout = (struct timespec){ .tv_nsec = 1e7 * MAX(100/60, anim.duration[anim.curr]) };
+				if (anim.curr >= win.tx_anim_len && anim.frame[anim.curr]) {
 					win.tx_anim_len = anim.curr+1;
 					win.tx_anim = realloc(win.tx_anim, sizeof(SDL_Texture*) * win.tx_anim_len);
 					win.tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 				}
 			}
-			if (win.tx_anim_len > anim.curr)
+			if (win.tx_anim_len > anim.curr) {
 				SDL_RenderCopy(win.rnd, win.tx_anim[anim.curr], 0, 0);
+			}
 
 		}
 
