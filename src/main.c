@@ -7,6 +7,7 @@
 #include <fontconfig/fontconfig.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
+#include <SDL_thread.h>
 
 #include "st.h"
 #include "arg.h"
@@ -29,6 +30,7 @@ Animation anim;
 
 static DrawingContext dc;
 static double usedfontsize = 0;
+static SDL_Thread *eventthrd;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
@@ -627,17 +629,38 @@ handle_textinput(SDL_Event *ev)
 }
 
 void
+handle_events()
+{
+	SDL_Event event;
+	while (1) {
+		while (SDL_PollEvent(&event)) {
+			switch(event.type) {
+				case SDL_TEXTINPUT:
+					handle_textinput(&event);
+					break;
+				case SDL_KEYDOWN:
+					handle_keypress(&event);
+					break;
+				case SDL_WINDOWEVENT:
+					handle_window(&event);
+					break;
+			}
+		}
+		SDL_Delay(1000/120);
+	}
+}
+
+void
 run()
 {
-	static struct timespec timeout = { .tv_nsec = 1e9 / 30 };
 
-	SDL_Event event;
 	fd_set rfd;
 	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+	ttyresize(cols, rows); // send terminal size to the terminal
 
-	// send terminal size to the terminal
-	ttyresize(cols, rows);
+	eventthrd = SDL_CreateThread(handle_events, "handle_events", 0);
 
+	static struct timespec timeout = { .tv_nsec = 1e9 / 30 };
 	int shouldRender = 0;
 
 	while (1) {
@@ -656,26 +679,9 @@ run()
 			shouldRender = 1;
 		}
 
-		// host events
-		while (SDL_PollEvent(&event)) {
-			switch(event.type) {
-				case SDL_TEXTINPUT:
-					handle_textinput(&event);
-					break;
-				case SDL_KEYDOWN:
-					handle_keypress(&event);
-					break;
-				case SDL_WINDOWEVENT:
-					handle_window(&event);
-					shouldRender = 1;
-					break;
-			}
-		}
-
-		MODBIT(win.mode, 1, MODE_VISIBLE);
-
 		if (shouldRender) {
 			SDL_RenderClear(win.rnd);
+			MODBIT(win.mode, 1, MODE_VISIBLE);
 			draw();
 		}
 
