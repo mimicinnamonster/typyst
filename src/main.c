@@ -689,7 +689,7 @@ run()
 			if (animate()) {
 				shouldRender = 1;
 				timeout = (struct timespec){ .tv_nsec = 1e7 * MAX(100/60, anim.duration[anim.curr]) };
-				if (anim.curr >= win.tx_anim_len && anim.frame[anim.curr]) {
+				if (anim.curr >= win.tx_anim_len) {
 					win.tx_anim_len = anim.curr+1;
 					win.tx_anim = realloc(win.tx_anim, sizeof(SDL_Texture*) * win.tx_anim_len);
 					win.tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);

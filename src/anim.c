@@ -75,16 +75,6 @@ decodeanimation(char *filename)
 	printf("starting animation decoding thread\n");
 	#endif
 
-	gif = gd_open_gif(filename);
-	tmppixels = malloc(gif->width * gif->height * 3);
-	tmpsrf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
-
-	#ifdef DEBUG
-	printf("loaded gif %s\n", filename);
-	printf("canvas size: %ux%u\n", gif->width, gif->height);
-	printf("number of colors: %d\n", gif->palette->size);
-	#endif
-
 	while (decodeframe());
 
 	free(tmppixels);
@@ -103,13 +93,20 @@ animate()
 	clock_gettime(CLOCK_MONOTONIC, &now);
 
 	// frame not loaded yet
-	if (!anim.duration || !anim.duration[anim.curr]) return;
+	if (!anim.duration[anim.curr]) return 0;
+
+	static firstRendered = 0;
+	if (!firstRendered) {
+		firstRendered = 1;
+		last = now;
+		return 1;
+	}
 
 	// is it time to advance frame
 	unsigned long dur = anim.duration[anim.curr];
 	unsigned long sd = (now.tv_sec - last.tv_sec) * 100;
 	unsigned long nsd = (now.tv_nsec - last.tv_nsec) / 1e7;
-	if (sd + nsd < dur) return;
+	if (sd + nsd < dur) return 0;
 
 	last = now;
 
@@ -135,5 +132,18 @@ animate()
 void
 initanim(char *filename)
 {
+	gif = gd_open_gif(filename);
+	tmppixels = malloc(gif->width * gif->height * 3);
+	tmpsrf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
+
+	#ifdef DEBUG
+	printf("loaded gif %s\n", filename);
+	printf("canvas size: %ux%u\n", gif->width, gif->height);
+	printf("number of colors: %d\n", gif->palette->size);
+	#endif
+
+	// decode first frame sync
+	decodeframe();
+
 	thrd = SDL_CreateThread(decodeanimation, "decodeanimation", filename);
 }
