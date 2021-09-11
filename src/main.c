@@ -560,15 +560,12 @@ handle_keypress(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-	#ifdef DEBUG
-	printf("keypress %d %d %d %d\n", ev->key.keysym.sym);
-	#endif
-
 	char *kmapbuf = kmap(ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
 		printf("sending %d %d %d %d\n", kmapbuf[0], kmapbuf[1], kmapbuf[2], kmapbuf[3]);
 		#endif
+
 		ttywrite(kmapbuf, strlen(kmapbuf), 0);
 		return;
 	}
@@ -577,15 +574,13 @@ handle_keypress(SDL_Event *ev)
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
-	int isalt = ev->key.keysym.mod & KMOD_ALT;
+	int isalt = ev->key.keysym.mod & KMOD_LALT;
 
-	int ismod = isctrl || isshift || isalt;
-	int isprint = !(buf[0] & 0x40000000);
-	int isspec = buf[0] < ' ' || buf[0] > 'z';
+	int isprint = !(ev->key.keysym.sym & 0x40000000);
+	int isspec = !(buf[0] >= ' ' && buf[0] <= '~');
 
-	if (!isprint || (!isspec && !isctrl && !isalt)) {
+	if (!isprint || (!isspec && !isctrl && !isalt))
 		return;
-	}
 
 	// workaround for httpps://discourse.libsdl.org/t/alt-tab-in-linux-generates-another-tab/22844
 	// ignore tab if it occured shortly after the window gained focus
@@ -593,10 +588,13 @@ handle_keypress(SDL_Event *ev)
 		return;
 
 	if (isctrl && isshift && !isspec)
-			buf[0] -= '@';
+		buf[0] -= '@';
 
 	if (isctrl && !isshift && !isspec)
-			buf[0] -= '`';
+		buf[0] -= '`';
+
+	if (!isctrl && isshift && !isspec)
+		buf[0] += 'a' - 'A';
 
 	if (isalt) {
 		buf[1] = buf[0];
@@ -609,8 +607,11 @@ handle_keypress(SDL_Event *ev)
 		isprint, isctrl, isshift, isalt);
 	#endif
 
-	ttywrite(buf, 1, 1);
+	ttywrite(buf, isalt ? 2 : 1, 1);
 }
+
+unsigned char *kb_state;
+int kb_state_len;
 
 void
 handle_textinput(SDL_Event *ev)
@@ -618,19 +619,25 @@ handle_textinput(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-	if (ev->text.text[0] <= 31)
+	if (kb_state[SDL_SCANCODE_LALT])
 		return;
+
+	if (kb_state[SDL_SCANCODE_LCTRL])
+		return;
+
+	int textlen = strlen(ev->text.text);
+	ttywrite(ev->text.text, textlen, 1);
 
 	#ifdef DEBUG
 	printf("text input: %s\n", ev->text.text);
 	#endif
-
-	ttywrite(ev->text.text, strlen(ev->text.text), 1);
 }
 
 void
 handle_events()
 {
+	kb_state = SDL_GetKeyboardState(&kb_state_len);
+
 	SDL_Event event;
 	while (1) {
 		while (SDL_PollEvent(&event)) {
@@ -646,7 +653,7 @@ handle_events()
 					break;
 			}
 		}
-		SDL_Delay(1000/120);
+		SDL_Delay(1000/60);
 	}
 }
 
