@@ -683,26 +683,26 @@ run()
 		}
 		if (FD_ISSET(ttyfd, &rfd)) {
 			ttyread();
+			MODBIT(win.mode, 1, MODE_VISIBLE);
+			draw();
 			shouldRender = 1;
 		}
 
 		if (shouldRender) {
 			SDL_RenderClear(win.rnd);
-			MODBIT(win.mode, 1, MODE_VISIBLE);
-			draw();
 		}
 
 		if (opt_anim) {
 			if (animate()) {
 				shouldRender = 1;
-				timeout = (struct timespec){ .tv_nsec = 1e7 * MAX(100/60, anim.duration[anim.curr]) };
+				timeout = (struct timespec){ .tv_nsec = 1e7 * MAX(100/30, anim.duration[anim.curr]) };
 				if (anim.curr >= win.tx_anim_len) {
 					win.tx_anim_len = anim.curr+1;
 					win.tx_anim = realloc(win.tx_anim, sizeof(SDL_Texture*) * win.tx_anim_len);
 					win.tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 				}
 			}
-			if (win.tx_anim_len > anim.curr) {
+			if (shouldRender && win.tx_anim_len > anim.curr) {
 				SDL_RenderCopy(win.rnd, win.tx_anim[anim.curr], 0, 0);
 			}
 
