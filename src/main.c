@@ -569,7 +569,7 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
-	char buf[8] = { ev->key.keysym.sym };
+	unsigned char buf[8] = { ev->key.keysym.sym };
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
@@ -577,8 +577,12 @@ handle_keypress(SDL_Event *ev)
 
 	int isprint = !(ev->key.keysym.sym & 0x40000000);
 	int isspec = !(buf[0] >= ' ' && buf[0] <= '~');
+	int isletter = buf[0] >= 'A' && buf[0] <= 'z';
 
 	if (!isprint || (!isspec && !isctrl && !isalt))
+		return;
+
+	if (!isctrl && isalt)
 		return;
 
 	// workaround for httpps://discourse.libsdl.org/t/alt-tab-in-linux-generates-another-tab/22844
@@ -586,14 +590,16 @@ handle_keypress(SDL_Event *ev)
 	if (buf[0] == '	' && ev->key.timestamp - win.lastfocus < 10)
 		return;
 
-	if (isctrl && isshift && !isspec)
+	if (isctrl && isshift && isletter)
 		buf[0] -= '@';
 
-	if (isctrl && !isshift && !isspec)
+	if (isctrl && !isshift && isletter)
 		buf[0] -= '`';
 
-	if (!isctrl && isshift && !isspec)
-		buf[0] += 'a' - 'A';
+	if (!isctrl && isshift && isletter) {
+		printf("capitalized %d %d\n", buf[0]);
+		buf[0] -= 'a' - 'A';
+	}
 
 	if (isalt) {
 		buf[1] = buf[0];
@@ -618,14 +624,17 @@ handle_textinput(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
-	if (kb_state[SDL_SCANCODE_LALT])
-		return;
-
 	if (kb_state[SDL_SCANCODE_LCTRL])
 		return;
 
+	int isalt = kb_state[SDL_SCANCODE_LALT];
+
+	unsigned char buf[8] = {isalt ? '\033' : 0};
 	int textlen = strlen(ev->text.text);
-	ttywrite(ev->text.text, textlen, 1);
+
+	memcpy(buf + (isalt ? 1 : 0), ev->text.text, MIN(textlen, 8 - (isalt ? 1 : 0)));
+
+	ttywrite(buf, strlen(buf), 1);
 
 	#ifdef DEBUG
 	printf("text input: %s\n", ev->text.text);
