@@ -30,7 +30,6 @@ Animation anim;
 
 static DrawingContext dc;
 static double usedfontsize = 0;
-static SDL_Thread *eventthrd;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
@@ -280,6 +279,9 @@ init()
 	loadfontset(font2, 0);
 	loadcols();
 
+	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+	ttyresize(cols, rows); // send terminal size to the terminal
+
 	// prepare sdl window
 	if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
 
@@ -288,12 +290,10 @@ init()
 	int w = cols * win.cw;
 	int h = rows * win.ch;
 
-	// create window and renderer
-	SDL_CreateWindowAndRenderer(w, h, SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE, &win.wnd, &win.rnd);
+	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE);
 
 	resize(w, h);
 
-	settitle("typyst");
 	win.mode = MODE_NUMLOCK;
 
 	if (opt_anim)
@@ -500,12 +500,11 @@ drawline(Line line, int x1, int y1, int x2)
 		drawglyph(base, i, ox, y1);
 }
 
+
 void
 finishdraw(void)
 {
-	if (win.tx_txt)
-		SDL_DestroyTexture(win.tx_txt);
-	win.tx_txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
+	win.updated = 1;
 }
 
 void
@@ -634,7 +633,7 @@ handle_textinput(SDL_Event *ev)
 }
 
 void
-handle_events()
+run_events()
 {
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
@@ -658,59 +657,70 @@ handle_events()
 }
 
 void
-run()
+run_render()
 {
+	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
+	SDL_ShowWindow(win.wnd);
 
+	SDL_Texture *tx_txt;
+	SDL_Texture **tx_anim;
+	unsigned int tx_anim_len;
+
+	int timeout = 1000/30;
+	int shouldDraw = 0;
+
+	while (1) {
+		shouldDraw = 0;
+
+		if (win.updated) {
+			SDL_DestroyTexture(tx_txt);
+			tx_txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
+			win.updated = 0;
+			shouldDraw = 1;
+		}
+
+		if (opt_anim && animate()) {
+			shouldDraw = 1;
+			timeout = MAX(1000/30, anim.duration[anim.curr]);
+			if (anim.curr >= tx_anim_len) {
+				tx_anim_len = anim.curr+1;
+				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
+				tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
+			}
+		}
+
+
+		if (shouldDraw) {
+			SDL_RenderClear(win.rnd);
+			if (tx_anim_len > anim.curr)
+				SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+			SDL_RenderCopy(win.rnd, tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){0,0,win.w,win.h});
+			SDL_RenderPresent(win.rnd);
+			shouldDraw = 0;
+		}
+
+		SDL_Delay(timeout);
+	}
+}
+
+void
+run_tty()
+{
 	fd_set rfd;
-	int ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-	ttyresize(cols, rows); // send terminal size to the terminal
-
-	eventthrd = SDL_CreateThread(handle_events, "handle_events", 0);
-
-	static struct timespec timeout = { .tv_nsec = 1e9 / 30 };
-	int shouldRender = 0;
+	static struct timespec timeout = { .tv_sec = 60 };
 
 	while (1) {
 		FD_ZERO(&rfd);
-		FD_SET(ttyfd, &rfd);
+		FD_SET(win.ttyfd, &rfd);
 
-		shouldRender = 0;
-
-		// tty events
-		if (pselect(ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
+		if (pselect(win.ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
 			if (errno == EINTR) continue;
 			die("select failed: %s\n", strerror(errno));
 		}
-		if (FD_ISSET(ttyfd, &rfd)) {
+		if (FD_ISSET(win.ttyfd, &rfd)) {
 			ttyread();
 			MODBIT(win.mode, 1, MODE_VISIBLE);
 			draw();
-			shouldRender = 1;
-		}
-
-		if (shouldRender) {
-			SDL_RenderClear(win.rnd);
-		}
-
-		if (opt_anim) {
-			if (animate()) {
-				shouldRender = 1;
-				timeout = (struct timespec){ .tv_nsec = 1e7 * MAX(100/30, anim.duration[anim.curr]) };
-				if (anim.curr >= win.tx_anim_len) {
-					win.tx_anim_len = anim.curr+1;
-					win.tx_anim = realloc(win.tx_anim, sizeof(SDL_Texture*) * win.tx_anim_len);
-					win.tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
-				}
-			}
-			if (shouldRender && win.tx_anim_len > anim.curr) {
-				SDL_RenderCopy(win.rnd, win.tx_anim[anim.curr], 0, 0);
-			}
-
-		}
-
-		if (shouldRender) {
-			SDL_RenderCopy(win.rnd, win.tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){0,0,win.w,win.h});
-			SDL_RenderPresent(win.rnd);
 		}
 	}
 }
@@ -752,7 +762,10 @@ main(int argc, char *argv[])
 	if (argc > 0) opt_cmd = argv;
 
 	init();
-	run();
+
+	SDL_CreateThread(run_events, "run_events", 0);
+	SDL_CreateThread(run_render, "run_render", 0);
+	run_tty();
 
 	return 0;
 }

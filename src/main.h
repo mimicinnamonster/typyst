@@ -25,15 +25,14 @@ typedef struct {
 	SDL_Window *wnd;
 	SDL_Renderer *rnd;
 	SDL_Surface *txt;
-	SDL_Texture *tx_txt;
-	SDL_Texture **tx_anim;
-	unsigned int tx_anim_len;
+	int updated;
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
 	int tw, th; /* tty width and height */
 	int mode; /* window state/mode flags */
 	int cursor; /* cursor style */
 	unsigned int lastfocus;
+	int ttyfd;
 } TermWindow;
 
 typedef struct {
