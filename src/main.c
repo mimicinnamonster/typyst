@@ -415,9 +415,8 @@ drawglyph(Glyph base, int len, int x, int y)
 	}
 
 	if (!ftxt) {
-
 		if (isEmoji) {
-			char text[5];
+			char text[5] = {0};
 			utf8encode(base.u, text);
 			ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->green, fg->blue});
 		}
