@@ -671,9 +671,9 @@ run_render()
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_ShowWindow(win.wnd);
 
-	SDL_Texture *tx_txt;
-	SDL_Texture **tx_anim;
-	unsigned int tx_anim_len;
+	SDL_Texture *tx_txt = 0;
+	SDL_Texture **tx_anim = 0;
+	unsigned int tx_anim_len = 0;
 
 	int timeout = 1000/30;
 	int shouldDraw = 0;
