@@ -8,6 +8,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_thread.h>
+#include <SDL2_rotozoom.h>
 
 #include "st.h"
 #include "arg.h"
@@ -21,7 +22,7 @@ static void init();
 static void resize(int, int);
 static int loadcolor(int, const char *, RenderColor *);
 static int loadfont(Font *, FcPattern *);
-static int loadfontset(const char *, double);
+static int loadfontset(FcPattern *pattern);
 
 #define FONTCACHESIZE 0
 
@@ -173,7 +174,7 @@ loadfont(Font *f, FcPattern *pattern)
 	f->match = FcFontMatch(NULL, f->pattern, &result);
 
 	FcPatternGetString(f->match, FC_FILE, 0, &filepath);
-	FcPatternGetCharSet(f->match, FC_CHARSET, 0, 	&f->charset);
+	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
 
 	#ifdef DEBUG
 	printf("loading font file: %s, font size: %f\n", filepath, usedfontsize);
@@ -193,6 +194,7 @@ loadfont(Font *f, FcPattern *pattern)
 	f->height = TTF_FontHeight(f->ttf);
 
 	#ifdef DEBUG
+	printf("glyph metrics: %dx%d\n", f->width, f->height);
 	printf("allocating font cache %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
@@ -201,42 +203,34 @@ loadfont(Font *f, FcPattern *pattern)
 	return 0;
 }
 
+FcPattern *createfontpattern(const char *fontstr) {
+	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);
+	return pattern;
+}
+
 int
-loadfontset(const char *fontstr, double fontsize)
+loadfontset(FcPattern *pattern)
 {
 	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 
-	if (!dc.fontsets)
-		die("Ran out of memory to allocate a fontset");
-
-	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);;
 	double fontval;
 
-	if (!pattern) die("can't open font %s\n", fontstr);
-
-	if (fontsize > 1) {
-		FcPatternDel(pattern, FC_PIXEL_SIZE);
-		FcPatternDel(pattern, FC_SIZE);
-		FcPatternAddDouble(pattern, FC_PIXEL_SIZE, (double)fontsize);
-		usedfontsize = fontsize;
+	if (FcPatternGetDouble(pattern, FC_PIXEL_SIZE, 0, &fontval) == FcResultMatch) {
+		usedfontsize = fontval;
+	} else if (FcPatternGetDouble(pattern, FC_SIZE, 0, &fontval) == FcResultMatch) {
+		usedfontsize = -1;
 	} else {
-		if (FcPatternGetDouble(pattern, FC_PIXEL_SIZE, 0, &fontval) == FcResultMatch) {
-			usedfontsize = fontval;
-		} else if (FcPatternGetDouble(pattern, FC_SIZE, 0, &fontval) == FcResultMatch) {
-			usedfontsize = -1;
-		} else {
-			/*
-			 * Default font size is 12, if none given. This is to
-			 * have a known usedfontsize value.
-			 */
-			FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
-			usedfontsize = 12;
-		}
+		/*
+		 * Default font size is 12, if none given. This is to
+		 * have a known usedfontsize value.
+		 */
+		FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
+		usedfontsize = 12;
 	}
 
 	if (loadfont(&fontset->font, pattern))
-		die("can't open font %s\n", fontstr);
+		die("can't open font\n");
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -246,19 +240,17 @@ loadfontset(const char *fontstr, double fontsize)
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
 	if (loadfont(&fontset->ifont, pattern))
-		die("can't open font %s\n", fontstr);
+		die("can't open font\n");
 
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
 	if (loadfont(&fontset->ibfont, pattern))
-		die("can't open font %s\n", fontstr);
+		die("can't open font\n");
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
 	if (loadfont(&fontset->bfont, pattern))
-		die("can't open font %s\n", fontstr);
-
-	FcPatternDestroy(pattern);
+		die("can't open font\n");
 
 	return dc.fontsetlen-1;
 }
@@ -272,11 +264,17 @@ init()
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
 	SDL_StartTextInput();
 
-	loadfontset(font, 0);
+	FcPattern *pattern = createfontpattern(font);
+	loadfontset(pattern);
+	FcPatternDestroy(pattern);
+
 	win.cw = ceilf(dc.fontsets->font.width);
 	win.ch = ceilf(dc.fontsets->font.height);
 
-	loadfontset(font2, 0);
+	pattern = createfontpattern(font2);
+	loadfontset(pattern);
+	FcPatternDestroy(pattern);
+
 	loadcols();
 
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
@@ -305,19 +303,30 @@ drawglyph(Glyph base, int len, int x, int y)
 {
 	FontSet *fontset = &dc.fontsets[0];
 
-	int isEmoji = FcFalse == FcCharSetHasChar(fontset->font.charset, base.u);
+	while (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
+		fontset++;
 
-	if (isEmoji) {
-		fontset = &dc.fontsets[1];
+		#ifdef DEBUG
+		printf("trying next font %d/%d\n", fontset - dc.fontsets, dc.fontsetlen);
+		#endif
 	}
 
+	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
+		FcPattern *pattern = createfontpattern(font);
+
+		FcCharSet *charset = FcCharSetCreate();
+		FcCharSetAddChar(charset, base.u);
+		FcPatternAdd(pattern, FC_CHARSET, (FcValue){ .type = FcTypeCharSet, .u = { .c = charset } }, 1);
+
+		loadfontset(pattern);
+		fontset = &dc.fontsets[dc.fontsetlen-1];
+
+		FcPatternDestroy(pattern);
+		FcCharSetDestroy(charset);
+	}
+
+
 	Font *f = &fontset->font;
-
-	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
-
-	int winx = x * win.cw;
-	int winy = y * win.ch;
-	int width = charlen * win.cw;
 
 	RenderColor *fg, *bg, *temp;
 	RenderColor colfg, colbg, truebg;
@@ -406,7 +415,6 @@ drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
-	clear(winx, winy, winx+width, winy+win.ch, bg);
 
 	SDL_Surface *ftxt = 0;
 
@@ -415,14 +423,9 @@ drawglyph(Glyph base, int len, int x, int y)
 	}
 
 	if (!ftxt) {
-		if (isEmoji) {
-			char text[5] = {0};
-			utf8encode(base.u, text);
-			ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->green, fg->blue});
-		}
-		else {
-			ftxt = TTF_RenderGlyph_Blended(f->ttf, base.u, (SDL_Color){fg->red, fg->green, fg->blue});
-		}
+		char text[8] = {0};
+		utf8encode(base.u, text);
+		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->green, fg->blue});
 
 		if (base.mode & ATTR_UNDERLINE) {
 			drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
@@ -441,7 +444,25 @@ drawglyph(Glyph base, int len, int x, int y)
 		#endif
 	}
 
-	SDL_BlitScaled(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
+	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
+	int winx = x * win.cw;
+	int winy = y * win.ch;
+	int width = win.cw * charlen;
+
+	clear(winx, winy, winx+width, winy+win.ch, bg);
+
+	#ifdef DEBUG
+	if (width != 10) printf("%lc width: ration %f width %d f->width %d charlen %d len %d\n", base.u, width/f->width, width, f->width, charlen, len);
+	#endif
+
+	if (f->width != width) {
+		SDL_Surface *sftxt = shrinkSurface(ftxt, MAX(f->width/width, 1), MAX(f->height/win.ch, 1));
+		SDL_BlitSurface(sftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
+		SDL_FreeSurface(sftxt);
+	}
+	else {
+		SDL_BlitSurface(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
+	}
 
 	if (base.u >= FONTCACHESIZE) {
 		SDL_FreeSurface(ftxt);

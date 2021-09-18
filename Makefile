@@ -11,7 +11,7 @@ SRC = $(wildcard src/*.c)
 
 OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
 INCS = `$(PKG_CONFIG) --cflags fontconfig` `$(SDL_CONFIG) --prefix=./sdl2/install --cflags`
-SDL_LIBS = -L./sdl2/install/lib '-Wl,-rpath,$$ORIGIN/lib' -Wl,--enable-new-dtags -lSDL2 -lSDL2_ttf
+SDL_LIBS = -L./sdl2/install/lib '-Wl,-rpath,$$ORIGIN/lib' -Wl,--enable-new-dtags -lSDL2 -lSDL2_ttf -lSDL2_gfx
 LIBS = -lutil `$(PKG_CONFIG) --libs fontconfig` $(SDL_LIBS)
 
 EXE = $(BUILD_DIR)/$(NAME)

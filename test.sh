@@ -45,3 +45,7 @@ echo $(color 6 90) bright sky $(esc 0)
 echo $(color 7 90) bright white $(esc 0)
 
 echo $(esc 1) bold $(esc 0)
+
+printf "glyph: %s code point: %x\n" ∈ \'∈
+printf "glyph: %s code point: %x\n" ⚠ \'⚠
+
