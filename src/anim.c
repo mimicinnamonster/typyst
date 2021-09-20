@@ -103,7 +103,7 @@ animate()
 	}
 
 	// is it time to advance frame
-	unsigned long dur = anim.duration[anim.curr];
+	unsigned long dur = MAX(100/30, anim.duration[anim.curr]);
 	unsigned long sd = (now.tv_sec - last.tv_sec) * 100;
 	unsigned long nsd = (now.tv_nsec - last.tv_nsec) / 1e7;
 	if (sd + nsd < dur) return 0;

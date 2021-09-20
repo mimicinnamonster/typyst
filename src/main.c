@@ -695,7 +695,7 @@ run_render()
 	SDL_Texture **tx_anim = 0;
 	unsigned int tx_anim_len = 0;
 
-	int timeout = 1000/30;
+	int timeout = 1000/60;
 	int shouldDraw = 0;
 
 	while (1) {
@@ -710,7 +710,7 @@ run_render()
 
 		if (opt_anim && animate()) {
 			shouldDraw = 1;
-			timeout = MAX(1000/30, anim.duration[anim.curr]);
+			timeout = MAX(1000/60, anim.duration[anim.curr]);
 			if (anim.curr >= tx_anim_len) {
 				tx_anim_len = anim.curr+1;
 				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
