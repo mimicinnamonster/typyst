@@ -1,11 +1,14 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+#include <stddef.h>
 #include <fontconfig/fontconfig.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include "arg.h"
 #include "st.h"
+
+#define MAXGLYPHS 1114112
 
 #define IS_SET(flag)		((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 8)
@@ -40,14 +43,13 @@ typedef struct {
 	int width;
 	int ascent;
 	int descent;
-	int badslant;
-	int badweight;
 	FcFontSet *set;
 	FcPattern *pattern;
 	FcPattern *match;
 	FcCharSet *charset;
 	TTF_Font *ttf;
 	SDL_Surface **cache;
+	char widths[MAXGLYPHS];
 } Font;
 
 typedef struct {
@@ -112,5 +114,6 @@ void setmode(int, unsigned int);
 void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);
+int getglyphwidth(Rune u);
 
 #endif

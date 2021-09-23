@@ -15,22 +15,21 @@
 #include "main.h"
 #include "config.h"
 
-static inline ushort sixd_to_16bit(int);
-static void drawglyph(Glyph, int, int, int);
-static void clear(int, int, int, int, RenderColor *);
-static void init();
-static void resize(int, int);
-static int loadcolor(int, const char *, RenderColor *);
-static int loadfont(Font *, FcPattern *);
-static int loadfontset(FcPattern *pattern);
+inline ushort sixd_to_16bit(int);
+void drawglyph(Glyph, int, int, int);
+void clear(int, int, int, int, RenderColor *);
+void init();
+void resize(int, int);
+int loadcolor(int, const char *, RenderColor *);
+int loadfont(Font *, FcPattern *);
+void loadfontset(FcPattern *pattern);
 
 #define FONTCACHESIZE 0
 
 TermWindow win;
 Animation anim;
-
-static DrawingContext dc;
-static double usedfontsize = 0;
+DrawingContext dc;
+double usedfontsize = 0;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
@@ -181,14 +180,12 @@ loadfont(Font *f, FcPattern *pattern)
 	#endif
 
 	f->ttf = TTF_OpenFont(filepath, usedfontsize);
-	if (!f->ttf) die(TTF_GetError());
+	if (!f->ttf) return -1;
 
 	// TODO: hinting
 	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
 
 	f->set = NULL;
-	f->badslant = 0;
-	f->badweight = 0;
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
@@ -208,7 +205,7 @@ FcPattern *createfontpattern(const char *fontstr) {
 	return pattern;
 }
 
-int
+void
 loadfontset(FcPattern *pattern)
 {
 	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
@@ -230,7 +227,7 @@ loadfontset(FcPattern *pattern)
 	}
 
 	if (loadfont(&fontset->font, pattern))
-		die("can't open font\n");
+		return;
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -239,20 +236,15 @@ loadfontset(FcPattern *pattern)
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (loadfont(&fontset->ifont, pattern))
-		die("can't open font\n");
+	loadfont(&fontset->ifont, pattern);
 
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	if (loadfont(&fontset->ibfont, pattern))
-		die("can't open font\n");
+	loadfont(&fontset->ibfont, pattern);
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
-	if (loadfont(&fontset->bfont, pattern))
-		die("can't open font\n");
-
-	return dc.fontsetlen-1;
+	loadfont(&fontset->bfont, pattern);
 }
 
 void
@@ -298,9 +290,10 @@ init()
 		initanim(opt_anim);
 }
 
-void
-drawglyph(Glyph base, int len, int x, int y)
+Font *
+selectglyphfont(Glyph base)
 {
+	Font *f = 0;
 	FontSet *fontset = &dc.fontsets[0];
 
 	while (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
@@ -326,19 +319,7 @@ drawglyph(Glyph base, int len, int x, int y)
 	}
 
 
-	Font *f = &fontset->font;
-
-	RenderColor *fg, *bg, *temp;
-	RenderColor colfg, colbg, truebg;
-
-	/* Fallback on color display for attributes not supported by the font */
-	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
-		if (fontset->ibfont.badslant || fontset->ibfont.badweight)
-			base.fg = defaultattr;
-	} else if ((base.mode & ATTR_ITALIC && fontset->ifont.badslant) ||
-			(base.mode & ATTR_BOLD && fontset->bfont.badweight)) {
-		base.fg = defaultattr;
-	}
+	f = &fontset->font;
 
 	/* Select right font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
@@ -348,6 +329,16 @@ drawglyph(Glyph base, int len, int x, int y)
 	} else if (base.mode & ATTR_BOLD) {
 		f = &fontset->bfont;
 	}
+
+	return f;
+}
+
+void
+selectglyphcolors(Glyph base, RenderColor *ret_fg, RenderColor *ret_bg)
+{
+	RenderColor *fg, *bg;
+	RenderColor *temp;
+	RenderColor colfg, colbg, truebg;
 
 	if (IS_TRUECOL(base.fg)) {
 		colfg.alpha = 0xff;
@@ -415,6 +406,51 @@ drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
+	*ret_fg = *fg;
+	*ret_bg = *bg;
+}
+
+int
+getglyphwidth(Rune u)
+{
+	int width = 0;
+	Font *f = selectglyphfont((Glyph){ .u = u });
+
+	if (f->widths[u] != 0)
+		return f->widths[u];
+
+
+	f->widths[u] = 1;
+
+	char text[8] = {0};
+	utf8encode(u, text);
+
+	SDL_Surface *srf = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){0, 0, 0});
+
+	if (srf) {
+		width = srf->w;
+		SDL_FreeSurface(srf);
+		if (width > win.cw)
+			f->widths[u] = 2;
+	}
+
+	#ifdef DEBUG
+	printf("computed width for %d: %d\n", u, f->widths[u]);
+	#endif
+
+	return f->widths[u];
+}
+
+void
+drawglyph(Glyph base, int len, int x, int y)
+{
+	RenderColor bg, fg;
+	selectglyphcolors(base, &fg, &bg);
+
+	Font *f = selectglyphfont(base);
+
+	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
+	int width = win.cw * charlen;
 
 	SDL_Surface *ftxt = 0;
 
@@ -425,7 +461,7 @@ drawglyph(Glyph base, int len, int x, int y)
 	if (!ftxt) {
 		char text[8] = {0};
 		utf8encode(base.u, text);
-		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg->red, fg->green, fg->blue});
+		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg.red, fg.green, fg.blue});
 
 		if (base.mode & ATTR_UNDERLINE) {
 			drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
@@ -444,16 +480,10 @@ drawglyph(Glyph base, int len, int x, int y)
 		#endif
 	}
 
-	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 	int winx = x * win.cw;
 	int winy = y * win.ch;
-	int width = win.cw * charlen;
 
-	clear(winx, winy, winx+width, winy+win.ch, bg);
-
-	#ifdef DEBUG
-	if (width != 10) printf("%lc width: ration %f width %d f->width %d charlen %d len %d\n", base.u, width/f->width, width, f->width, charlen, len);
-	#endif
+	clear(winx, winy, winx+width, winy+win.ch, &bg);
 
 	if (f->width != width) {
 		SDL_Surface *sftxt = shrinkSurface(ftxt, MAX(f->width/width, 1), MAX(f->height/win.ch, 1));
@@ -764,7 +794,7 @@ usage(void)
 int
 main(int argc, char *argv[])
 {
-	setlocale(LC_CTYPE, "");
+	setlocale(LC_CTYPE, "UTF-8");
 
 	ARGBEGIN {
 	case 'a':

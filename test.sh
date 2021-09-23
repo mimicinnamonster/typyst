@@ -48,4 +48,4 @@ echo $(esc 1) bold $(esc 0)
 
 printf "glyph: %s code point: %x\n" ∈ \'∈
 printf "glyph: %s code point: %x\n" ⚠ \'⚠
-
+printf "glyph: %s code point: %x\n" ⌘ \'⌘

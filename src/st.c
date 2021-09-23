@@ -1988,7 +1988,11 @@ tputc(Rune u)
 	} else {
 		len = utf8encode(u, c);
 		if (!control && (width = wcwidth(u)) == -1)
-			width = 1;
+		{
+			width = getglyphwidth(u);
+			if (width == -1)
+				width = 1;
+		}
 	}
 
 	if (IS_SET(MODE_PRINT))
