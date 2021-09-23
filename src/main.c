@@ -515,7 +515,7 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 void
 settitle(char *p)
 {
-	SDL_SetWindowTitle(win.wnd, p);
+	// noop
 }
 
 int
