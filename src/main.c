@@ -419,23 +419,19 @@ getglyphwidth(Rune u)
 	if (f->widths[u] != 0)
 		return f->widths[u];
 
-
 	f->widths[u] = 1;
 
 	char text[8] = {0};
 	utf8encode(u, text);
 
-	SDL_Surface *srf = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){0, 0, 0});
+	int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
+	TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
 
-	if (srf) {
-		width = srf->w;
-		SDL_FreeSurface(srf);
-		if (width > win.cw)
-			f->widths[u] = 2;
-	}
+	if (advance > win.cw)
+		f->widths[u] = 2;
 
 	#ifdef DEBUG
-	printf("computed width for %d: %d\n", u, f->widths[u]);
+	printf("computed width for %s  %d: %d\n", text, u, f->widths[u]);
 	#endif
 
 	return f->widths[u];
