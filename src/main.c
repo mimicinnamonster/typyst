@@ -459,13 +459,6 @@ drawglyph(Glyph base, int len, int x, int y)
 		utf8encode(base.u, text);
 		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg.red, fg.green, fg.blue});
 
-		if (base.mode & ATTR_UNDERLINE) {
-			drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
-		}
-
-		if (base.mode & ATTR_STRUCK) {
-			drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
-		}
 	}
 
 	if (base.u < FONTCACHESIZE) {
@@ -480,6 +473,14 @@ drawglyph(Glyph base, int len, int x, int y)
 	int winy = y * win.ch;
 
 	clear(winx, winy, winx+width, winy+win.ch, &bg);
+
+	if (base.mode & ATTR_UNDERLINE) {
+		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
+	}
+
+	if (base.mode & ATTR_STRUCK) {
+		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
+	}
 
 	if (f->width != width) {
 		SDL_Surface *sftxt = shrinkSurface(ftxt, MAX(f->width/width, 1), MAX(f->height/win.ch, 1));
