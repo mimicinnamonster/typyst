@@ -402,7 +402,7 @@ die(const char *errstr, ...)
 	va_start(ap, errstr);
 	vfprintf(stderr, errstr, ap);
 	va_end(ap);
-	exit(1);
+	_exit(1);
 }
 
 void
@@ -454,7 +454,7 @@ execsh(char *cmd, char **args)
 	signal(SIGALRM, SIG_DFL);
 
 	execvp(prog, args);
-	exit(1);
+	_exit(1);
 }
 
 void
@@ -473,7 +473,7 @@ sigchld(int a)
 		die("child exited with status %d\n", WEXITSTATUS(stat));
 	else if (WIFSIGNALED(stat))
 		die("child terminated due to signal %d\n", WTERMSIG(stat));
-	exit(0);
+	_exit(0);
 }
 
 void
@@ -573,7 +573,7 @@ ttyread(void)
 
 	switch (ret) {
 	case 0:
-		exit(0);
+		_exit(0);
 	case -1:
 		die("couldn't read from shell: %s\n", strerror(errno));
 	default:
