@@ -8,7 +8,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_thread.h>
-#include <SDL2_rotozoom.h>
+#include <SDL2/SDL2_rotozoom.h>
 
 #include "st.h"
 #include "arg.h"

@@ -6,12 +6,12 @@ INSTALL_SHARE_DIR = ~/.local/share
 INSTALL_BIN_DIR = ~/.local/bin
 BUILD_DIR = _build
 PKG_CONFIG = pkg-config
-SDL_CONFIG = ./sdl2/install/bin/sdl2-config
+SDL_CONFIG = ./sdl2/build/bin/sdl2-config
 SRC = $(wildcard src/*.c)
 
 OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
-INCS = `$(PKG_CONFIG) --cflags fontconfig` `$(SDL_CONFIG) --prefix=./sdl2/install --cflags`
-SDL_LIBS = -L./sdl2/install/lib '-Wl,-rpath,$$ORIGIN/lib' -Wl,--enable-new-dtags -lSDL2 -lSDL2_ttf -lSDL2_gfx
+INCS = `$(PKG_CONFIG) --cflags fontconfig` `$(SDL_CONFIG) --prefix=./sdl2/build --cflags`
+SDL_LIBS = -L./sdl2/build/lib '-Wl,-rpath,$$ORIGIN/lib' -Wl,--enable-new-dtags -lSDL2 -lSDL2_ttf -lSDL2_gfx
 LIBS = -lutil `$(PKG_CONFIG) --libs fontconfig` $(SDL_LIBS)
 
 EXE = $(BUILD_DIR)/$(NAME)
@@ -30,7 +30,7 @@ options:
 build_dir:
 	mkdir -p $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/lib
-	cp -r sdl2/install/lib/*.so* $(BUILD_DIR)/lib
+	cp -r sdl2/build/lib/*.so* $(BUILD_DIR)/lib
 
 $(BUILD_DIR)/%.o: src/%.c | build_dir
 	$(CC) -o $@ $(STCFLAGS) -c $<
