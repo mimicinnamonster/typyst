@@ -58,6 +58,8 @@ setmode(int set, unsigned int flags)
 void
 resize(int width, int height)
 {
+	if (win.drawing) return;
+
 	win.w = width;
 	win.h = height;
 
@@ -74,6 +76,9 @@ resize(int width, int height)
 	// resize text texture
 	if (win.txt) SDL_FreeSurface(win.txt);
 	win.txt = SDL_CreateRGBSurface(0, width, height, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
+
+	// redraw all text on new surface
+	redraw();
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -518,6 +523,7 @@ settitle(char *p)
 int
 startdraw(void)
 {
+	win.drawing = 1;
 	return IS_SET(MODE_VISIBLE);
 }
 
@@ -551,6 +557,7 @@ drawline(Line line, int x1, int y1, int x2)
 void
 finishdraw(void)
 {
+	win.drawing = 0;
 	win.updated = 1;
 }
 
@@ -689,31 +696,47 @@ handle_textinput(SDL_Event *ev)
 }
 
 void
-run_events()
+read_events()
 {
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
 	SDL_Event event;
-	while (1) {
-		while (SDL_PollEvent(&event)) {
-			switch(event.type) {
-				case SDL_TEXTINPUT:
-					handle_textinput(&event);
-					break;
-				case SDL_KEYDOWN:
-					handle_keypress(&event);
-					break;
-				case SDL_WINDOWEVENT:
-					handle_window(&event);
-					break;
-			}
+	while (SDL_PollEvent(&event)) {
+		switch(event.type) {
+			case SDL_TEXTINPUT:
+				handle_textinput(&event);
+				break;
+			case SDL_KEYDOWN:
+				handle_keypress(&event);
+				break;
+			case SDL_WINDOWEVENT:
+				handle_window(&event);
+				break;
 		}
-		SDL_Delay(1000/60);
 	}
 }
 
 void
-run_render()
+read_tty() {
+	fd_set rfd;
+	static struct timespec pSelectTimeout = { .tv_nsec = 10e8/60 };
+
+	FD_ZERO(&rfd);
+	FD_SET(win.ttyfd, &rfd);
+
+	if (pselect(win.ttyfd+1, &rfd, NULL, NULL, &pSelectTimeout, NULL) < 0) {
+		if (errno == EINTR) return;
+		die("select failed: %s\n", strerror(errno));
+	}
+	if (FD_ISSET(win.ttyfd, &rfd)) {
+		ttyread();
+		MODBIT(win.mode, 1, MODE_VISIBLE);
+		draw();
+	}
+}
+
+void
+run()
 {
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_ShowWindow(win.wnd);
@@ -722,10 +745,12 @@ run_render()
 	SDL_Texture **tx_anim = 0;
 	unsigned int tx_anim_len = 0;
 
-	int timeout = 1000/60;
 	int shouldDraw = 0;
 
 	while (1) {
+		read_events();
+		read_tty();
+
 		shouldDraw = 0;
 
 		if (win.updated) {
@@ -737,7 +762,6 @@ run_render()
 
 		if (opt_anim && animate()) {
 			shouldDraw = 1;
-			timeout = MAX(1000/60, anim.duration[anim.curr]);
 			if (anim.curr >= tx_anim_len) {
 				tx_anim_len = anim.curr+1;
 				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
@@ -755,29 +779,6 @@ run_render()
 			shouldDraw = 0;
 		}
 
-		SDL_Delay(timeout);
-	}
-}
-
-void
-run_tty()
-{
-	fd_set rfd;
-	static struct timespec timeout = { .tv_sec = 60 };
-
-	while (1) {
-		FD_ZERO(&rfd);
-		FD_SET(win.ttyfd, &rfd);
-
-		if (pselect(win.ttyfd+1, &rfd, NULL, NULL, &timeout, NULL) < 0) {
-			if (errno == EINTR) continue;
-			die("select failed: %s\n", strerror(errno));
-		}
-		if (FD_ISSET(win.ttyfd, &rfd)) {
-			ttyread();
-			MODBIT(win.mode, 1, MODE_VISIBLE);
-			draw();
-		}
 	}
 }
 
@@ -785,7 +786,9 @@ run_tty()
 void
 usage(void)
 {
-	die("");
+	die(
+		"	-a path.gif	set animated gif backround"
+	);
 }
 
 int
@@ -801,15 +804,6 @@ main(int argc, char *argv[])
 		if (argc > 0)
 			--argc, ++argv;
 		break;
-	case 'o':
-		opt_io = EARGF(usage());
-		break;
-	case 'l':
-		opt_line = EARGF(usage());
-		break;
-	case 'v':
-		die("%s " VERSION "\n");
-		break;
 	default:
 		usage();
 	} ARGEND;
@@ -818,10 +812,7 @@ main(int argc, char *argv[])
 	if (argc > 0) opt_cmd = argv;
 
 	init();
-
-	SDL_CreateThread(run_events, "run_events", 0);
-	SDL_CreateThread(run_render, "run_render", 0);
-	run_tty();
+	run();
 
 	return 0;
 }
