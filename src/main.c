@@ -63,8 +63,8 @@ resize(int width, int height)
 	win.w = width;
 	win.h = height;
 
-	cols = MAX(1, win.w / win.cw);
-	rows = MAX(1, win.h / win.ch);
+	cols = MAX(1, (win.w-winpad*2) / win.cw);
+	rows = MAX(1, (win.h-winpad*2) / win.ch);
 
 	win.tw = cols * win.cw;
 	win.th = rows * win.ch;
@@ -774,7 +774,7 @@ run()
 			SDL_RenderClear(win.rnd);
 			if (tx_anim_len > anim.curr)
 				SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
-			SDL_RenderCopy(win.rnd, tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){0,0,win.w,win.h});
+			SDL_RenderCopy(win.rnd, tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){winpad,winpad,win.w-winpad*2,win.h-winpad*2});
 			SDL_RenderPresent(win.rnd);
 			shouldDraw = 0;
 		}
