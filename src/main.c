@@ -504,6 +504,10 @@ drawglyph(Glyph base, int len, int x, int y)
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 {
+	if (win.mode & MODE_HIDE) {
+		return;
+	}
+
 	int tmp = g.fg;
 	g.fg = g.bg;
 	g.bg = tmp;
