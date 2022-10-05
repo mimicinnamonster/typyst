@@ -617,6 +617,12 @@ handle_keypress(SDL_Event *ev)
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
+	// workaround for httpps://discourse.libsdl.org/t/alt-tab-in-linux-generates-another-tab/22844
+	// ignore tab if it occured shortly after the window gained focus
+	if (ev->key.timestamp - win.lastfocus < 100) {
+		return;
+	}
+
 	char *kmapbuf = kmap(ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
@@ -641,11 +647,6 @@ handle_keypress(SDL_Event *ev)
 		return;
 
 	if (!isctrl && isalt)
-		return;
-
-	// workaround for httpps://discourse.libsdl.org/t/alt-tab-in-linux-generates-another-tab/22844
-	// ignore tab if it occured shortly after the window gained focus
-	if (buf[0] == '	' && ev->key.timestamp - win.lastfocus < 10)
 		return;
 
 	if (isctrl && isshift && isletter)
