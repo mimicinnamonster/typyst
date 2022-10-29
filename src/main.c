@@ -649,15 +649,23 @@ handle_keypress(SDL_Event *ev)
 	if (!isctrl && isalt)
 		return;
 
-	if (isctrl && isshift && isletter)
-		buf[0] -= '@';
+	if (isctrl && buf[0] == ' ') {
+		buf[0] = 0;
+	}
 
-	if (isctrl && !isshift && isletter)
-		buf[0] -= '`';
+	if (isletter) {
+		if (isctrl && isshift)
+			buf[0] -= '@';
 
-	if (!isctrl && isshift && isletter) {
-		printf("capitalized %d %d\n", buf[0]);
-		buf[0] -= 'a' - 'A';
+		if (isctrl && !isshift)
+			buf[0] -= '`';
+
+		if (!isctrl && isshift) {
+			#ifdef DEBUG
+			printf("capitalized %d %d\n", buf[0]);
+			#endif
+			buf[0] -= 'a' - 'A';
+		}
 	}
 
 	if (isalt) {
