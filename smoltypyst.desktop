@@ -1,0 +1,6 @@
+[Desktop Entry]
+Type=Application
+Name=smoltypyst
+Exec=typyst -f "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true" bash -c "tmux attach || tmux new; until ! tmux attach; do :; done"
+Icon=utilities-terminal
+Categories=System;TerminalEmulator;

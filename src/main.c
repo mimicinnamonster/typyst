@@ -3,6 +3,9 @@
 #include <locale.h>
 #include <time.h>
 #include <sys/select.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
 #include <fontconfig/fontconfig.h>
 #include <SDL.h>
@@ -36,6 +39,7 @@ static char *opt_embed  = NULL;
 static char *opt_io	= NULL;
 static char *opt_line	= NULL;
 static char *opt_anim   = NULL;
+static int opt_size     = 22;
 
 void bell()
 {
@@ -614,6 +618,7 @@ kmap(SDL_KeyboardEvent *ev)
 void
 handle_keypress(SDL_Event *ev)
 {
+
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
@@ -633,45 +638,65 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
+	unsigned char keysz = 1;
 	unsigned char buf[8] = { ev->key.keysym.sym };
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
 	int isalt = ev->key.keysym.mod & KMOD_LALT;
 
-	int isprint = !(ev->key.keysym.sym & 0x40000000);
+	int isfn = (ev->key.keysym.scancode >= SDL_SCANCODE_F1 && ev->key.keysym.scancode <= SDL_SCANCODE_F12);
+	int isprint = !(ev->key.keysym.sym & 1<<30);
 	int isspec = !(buf[0] >= ' ' && buf[0] <= '~');
 	int isletter = buf[0] >= 'A' && buf[0] <= 'z';
 
-	if (!isprint || (!isspec && !isctrl && !isalt))
-		return;
+	if (isfn) {
+		switch (ev->key.keysym.scancode) {
+			case SDL_SCANCODE_F1: memcpy(buf, "\EOP", keysz = 3); break;
+			case SDL_SCANCODE_F2: memcpy(buf, "\EOQ", keysz = 3); break;
+			case SDL_SCANCODE_F3: memcpy(buf, "\EOR", keysz = 3); break;
+			case SDL_SCANCODE_F4: memcpy(buf, "\EOS", keysz = 3); break;
+			case SDL_SCANCODE_F5: memcpy(buf, "\E[15~", keysz = 5); break;
+			case SDL_SCANCODE_F6: memcpy(buf, "\E[17~", keysz = 5); break;
+			case SDL_SCANCODE_F7: memcpy(buf, "\E[18~", keysz = 5); break;
+			case SDL_SCANCODE_F8: memcpy(buf, "\E[19~", keysz = 5); break;
+			case SDL_SCANCODE_F9: memcpy(buf, "\E[20~", keysz = 5); break;
+			case SDL_SCANCODE_F10: memcpy(buf, "\E[21~", keysz = 5); break;
+			case SDL_SCANCODE_F11: memcpy(buf, "\E[23~", keysz = 5); break;
+			case SDL_SCANCODE_F12: memcpy(buf, "\E[24~", keysz = 5); break;
+		}
+	} else {
+		if (!isprint || (!isspec && !isctrl && !isalt))
+			return;
 
-	if (!isctrl && isalt)
-		return;
+		if (!isctrl && isalt)
+			return;
 
-	if (isctrl && buf[0] == ' ') {
-		buf[0] = 0;
-	}
+		if (isctrl && buf[0] == ' ') {
+			buf[0] = 0;
+		}
+		if (isletter) {
+			if (isctrl && isshift)
+				buf[0] -= '@';
 
-	if (isletter) {
-		if (isctrl && isshift)
-			buf[0] -= '@';
+			if (isctrl && !isshift)
+				buf[0] -= '`';
 
-		if (isctrl && !isshift)
-			buf[0] -= '`';
+			if (!isctrl && isshift) {
+				#ifdef DEBUG
+				printf("capitalized %d %d\n", buf[0]);
+				#endif
+				buf[0] -= 'a' - 'A';
+			}
+		}
 
-		if (!isctrl && isshift) {
-			#ifdef DEBUG
-			printf("capitalized %d %d\n", buf[0]);
-			#endif
-			buf[0] -= 'a' - 'A';
+		if (isalt) {
+			buf[1] = buf[0];
+			buf[0] = '\E';
+			keysz = 2;
 		}
 	}
 
-	if (isalt) {
-		buf[1] = buf[0];
-		buf[0] = '\033';
-	}
 
 	#ifdef DEBUG
 	printf("sending %d %d %d %d print:%d, ctrl: %d, shift: %d, alt: %d\n",
@@ -679,7 +704,7 @@ handle_keypress(SDL_Event *ev)
 		isprint, isctrl, isshift, isalt);
 	#endif
 
-	ttywrite(buf, isalt ? 2 : 1, 1);
+	ttywrite(buf, keysz, 1);//isfn ?  : isalt ? 2 : 1, 1);
 }
 
 unsigned char *kb_state;
@@ -696,7 +721,7 @@ handle_textinput(SDL_Event *ev)
 
 	int isalt = kb_state[SDL_SCANCODE_LALT];
 
-	unsigned char buf[8] = {isalt ? '\033' : 0};
+	unsigned char buf[8] = {isalt ? '\E' : 0};
 	int textlen = strlen(ev->text.text);
 
 	memcpy(buf + (isalt ? 1 : 0), ev->text.text, MIN(textlen, 8 - (isalt ? 1 : 0)));
@@ -800,7 +825,7 @@ void
 usage(void)
 {
 	die(
-		"	-a path.gif	set animated gif backround"
+		"	-f fontconfig string\n	-a path.gif set animated gif background"
 	);
 }
 
@@ -810,6 +835,10 @@ main(int argc, char *argv[])
 	setlocale(LC_CTYPE, "UTF-8");
 
 	ARGBEGIN {
+	case 'f':
+		char *s = EARGF(usage());
+		font = s;
+		break;
 	case 'a':
 		opt_anim = EARGF(usage());
 		break;

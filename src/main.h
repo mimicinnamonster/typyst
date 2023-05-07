@@ -5,7 +5,6 @@
 #include <fontconfig/fontconfig.h>
 #include <SDL.h>
 #include <SDL_ttf.h>
-#include "arg.h"
 #include "st.h"
 
 #define MAXGLYPHS 1114112
