@@ -44,6 +44,9 @@ run: $(EXE)
 test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
+debug:
+	CFLAGS=-DDEBUG make test
+
 clean:
 	rm -rf $(BUILD_DIR)
 
