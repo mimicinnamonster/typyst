@@ -45,7 +45,7 @@ test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
 debug:
-	CFLAGS=-DDEBUG make test
+	CFLAGS="-g -DDEBUG" make test
 
 profile:
 	LDFLAGS="-g" CFLAGS="-g" make $(EXE)

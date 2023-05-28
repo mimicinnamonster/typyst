@@ -81,10 +81,6 @@ resize(int width, int height)
 	if (win.txt) SDL_FreeSurface(win.txt);
 	win.txt = SDL_CreateRGBSurface(0, width, height, 32, 0xff, 0xff00, 0xff0000, 0xff000000);
 
-	// get new window surface
-	if (win.srf) SDL_FreeSurface(win.srf);
-	win.srf = SDL_GetWindowSurface(win.wnd);
-
 	// redraw all text on new surface
 	redraw();
 
@@ -794,7 +790,12 @@ read_tty() {
 void
 run()
 {
-	unsigned int anim_len = 0;
+	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
+	SDL_ShowWindow(win.wnd);
+
+	SDL_Texture *tx_txt = 0;
+	SDL_Texture **tx_anim = 0;
+	unsigned int tx_anim_len = 0;
 
 	int shouldDraw = 0;
 
@@ -805,37 +806,31 @@ run()
 		shouldDraw = 0;
 
 		if (win.updated) {
+			SDL_DestroyTexture(tx_txt);
+			tx_txt = SDL_CreateTextureFromSurface(win.rnd, win.txt);
 			win.updated = 0;
 			shouldDraw = 1;
 		}
 
 		if (opt_anim && animate()) {
 			shouldDraw = 1;
-			if (anim.curr >= anim_len) {
-				anim_len = anim.curr+1;
+			if (anim.curr >= tx_anim_len) {
+				tx_anim_len = anim.curr+1;
+				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
+				tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 			}
 		}
 
 
 		if (shouldDraw) {
-			#ifdef DEBUG
-			printf("drawing frame\n");
-			#endif
-
-			if (anim_len > anim.curr) {
-				SDL_BlitSurface(anim.frame[anim.curr], 0, win.srf, &(SDL_Rect){0, 0, win.w, win.h});
-				printf("drawing animation frame\n");
-			}
-
-			SDL_BlitSurface(win.txt, 0, win.srf, 0);
-			SDL_UpdateWindowSurface(win.wnd);
+			SDL_RenderClear(win.rnd);
+			if (tx_anim_len > anim.curr)
+				SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+			SDL_RenderCopy(win.rnd, tx_txt, &(SDL_Rect){0,0,win.tw,win.th}, &(SDL_Rect){winpad,winpad,win.w-winpad*2,win.h-winpad*2});
+			SDL_RenderPresent(win.rnd);
 			shouldDraw = 0;
 		}
 
-		char* err = SDL_GetError();
-		if (err != 0 && err[0] != 0) {
-			printf("error: %s\n", err);
-		}
 	}
 }
 
