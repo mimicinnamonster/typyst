@@ -55,6 +55,7 @@ install: $(EXE)
 	rm -rf $(INSTALL_BIN_DIR)/$(NAME)
 	rm -rf $(INSTALL_SHARE_DIR)/$(NAME)
 	mkdir -p $(INSTALL_SHARE_DIR)/$(NAME)
+	cp $(EXE) $(INSTALL_BIN_DIR)/$(NAME)
 	tic -sx tic.info
 
 uninstall:
