@@ -45,7 +45,11 @@ test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
 debug:
-	CFLAGS=-DDEBUG make test
+	CFLAGS="-DDEBUG" make test
+
+profile:
+	#CFLAGS="-fprofile-arcs -ftest-coverage" LDFLAGS="-g -pg -lgcov --coverage" make test
+	CFLAGS="-g" LDFLAGS="" make test
 
 clean:
 	rm -rf $(BUILD_DIR)
