@@ -794,7 +794,7 @@ read_tty() {
 void
 run()
 {
-	unsigned int tx_anim_len = 0;
+	unsigned int anim_len = 0;
 
 	int shouldDraw = 0;
 
@@ -809,16 +809,12 @@ run()
 			shouldDraw = 1;
 		}
 
-		/*
 		if (opt_anim && animate()) {
 			shouldDraw = 1;
-			if (anim.curr >= tx_anim_len) {
-				tx_anim_len = anim.curr+1;
-				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
-				tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
+			if (anim.curr >= anim_len) {
+				anim_len = anim.curr+1;
 			}
 		}
-		*/
 
 
 		if (shouldDraw) {
@@ -826,10 +822,10 @@ run()
 			printf("drawing frame\n");
 			#endif
 
-			/* TODO
-			if (tx_anim_len > anim.curr)
-				SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
-			*/
+			if (anim_len > anim.curr) {
+				SDL_BlitSurface(anim.frame[anim.curr], 0, win.srf, &(SDL_Rect){0, 0, win.w, win.h});
+				printf("drawing animation frame\n");
+			}
 
 			SDL_BlitSurface(win.txt, 0, win.srf, 0);
 			SDL_UpdateWindowSurface(win.wnd);
