@@ -25,8 +25,8 @@ typedef struct {
 
 typedef struct {
 	SDL_Window *wnd;
-	SDL_Renderer *rnd;
 	SDL_Surface *txt;
+	SDL_Surface *srf;
 	int drawing;
 	int updated;
 	int w, h; /* window width and height */
