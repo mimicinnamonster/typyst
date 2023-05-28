@@ -77,10 +77,6 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
 
-	SDL_DestroyTexture(win.txt);
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA8888, SDL_TEXTUREACCESS_TARGET, win.w, win.h);
-
-	SDL_SetRenderTarget(win.rnd, win.txt);
 	SDL_RenderClear(win.rnd);
 
 	// redraw all text on new surface
@@ -333,7 +329,6 @@ selectglyphfont(Glyph base)
 		FcCharSetDestroy(charset);
 	}
 
-
 	f = &fontset->font;
 
 	/* Select right font */
@@ -455,7 +450,6 @@ getglyphwidth(Rune u)
 void
 drawglyph(Glyph base, int len, int x, int y)
 {
-	/*
 	if (base.mode & ATTR_UNDERLINE) {
 		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
 	}
@@ -463,7 +457,6 @@ drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_STRUCK) {
 		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
 	}
-	*/
 
 	RenderColor bg, fg;
 	selectglyphcolors(base, &fg, &bg);
@@ -806,7 +799,6 @@ run()
 	unsigned int tx_anim_len = 0;
 
 	int shouldDraw = 0;
-	SDL_SetRenderTarget(win.rnd, NULL);
 
 	while (1) {
 		read_events();
@@ -827,20 +819,11 @@ run()
 			}
 		}
 
-
 		if (shouldDraw) {
-			if (tx_anim_len > anim.curr)
-				SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
-
-			SDL_SetRenderTarget(win.rnd, NULL);
-			SDL_RenderClear(win.rnd);
-			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
+			redraw();
 			SDL_RenderPresent(win.rnd);
-			SDL_SetRenderTarget(win.rnd, win.txt);
-
 			shouldDraw = 0;
 		}
-
 	}
 }
 
