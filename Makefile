@@ -6,13 +6,12 @@ INSTALL_SHARE_DIR = ~/.local/share
 INSTALL_BIN_DIR = ~/.local/bin
 BUILD_DIR = _build
 PKG_CONFIG = pkg-config
-SDL_CONFIG = ./sdl2/build/bin/sdl2-config
-SRC = $(wildcard src/*.c)
+PKGCONF_DEPS = fontconfig sdl2 SDL2_ttf SDL2_gfx
 
+SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
-INCS = `$(PKG_CONFIG) --cflags fontconfig` `$(SDL_CONFIG) --prefix=./sdl2/build --cflags`
-SDL_LIBS = -L./sdl2/build/lib '-Wl,-rpath,$$ORIGIN/lib' -Wl,--enable-new-dtags -lSDL2 -lSDL2_ttf -lSDL2_gfx
-LIBS = -lutil `$(PKG_CONFIG) --libs fontconfig` $(SDL_LIBS)
+INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
+LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)`
 
 EXE = $(BUILD_DIR)/$(NAME)
 STCPPFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600
@@ -29,8 +28,6 @@ options:
 
 build_dir:
 	mkdir -p $(BUILD_DIR)
-	mkdir -p $(BUILD_DIR)/lib
-	cp -r sdl2/build/lib/*.so* $(BUILD_DIR)/lib
 
 $(BUILD_DIR)/%.o: src/%.c | build_dir
 	$(CC) -o $@ $(STCFLAGS) -c $<
@@ -58,8 +55,6 @@ install: $(EXE)
 	rm -rf $(INSTALL_BIN_DIR)/$(NAME)
 	rm -rf $(INSTALL_SHARE_DIR)/$(NAME)
 	mkdir -p $(INSTALL_SHARE_DIR)/$(NAME)
-	cp -r $(BUILD_DIR)/* $(INSTALL_SHARE_DIR)/$(NAME)
-	ln -st $(INSTALL_BIN_DIR) $(INSTALL_SHARE_DIR)/$(NAME)/$(NAME)
 	tic -sx tic.info
 
 uninstall:
