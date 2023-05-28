@@ -27,7 +27,7 @@ int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
 void loadfontset(FcPattern *pattern);
 
-#define FONTCACHESIZE 0
+#define FONTCACHESIZE 1048576
 
 TermWindow win;
 Animation anim;
@@ -449,6 +449,15 @@ getglyphwidth(Rune u)
 void
 drawglyph(Glyph base, int len, int x, int y)
 {
+
+	if (base.mode & ATTR_UNDERLINE) {
+		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
+	}
+
+	if (base.mode & ATTR_STRUCK) {
+		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
+	}
+
 	RenderColor bg, fg;
 	selectglyphcolors(base, &fg, &bg);
 
@@ -459,18 +468,37 @@ drawglyph(Glyph base, int len, int x, int y)
 
 	SDL_Surface *ftxt = 0;
 
-	if (base.u < FONTCACHESIZE && f->cache[base.u]) {
+	if (base.u < FONTCACHESIZE && f->cache[base.u] != 0) {
 		ftxt = f->cache[base.u];
 	}
 
+	int winx = x * win.cw;
+	int winy = y * win.ch;
+
 	if (!ftxt) {
+		#ifdef DEBUG
+		printf("rendering glpyh %lc (%d)\n", base.u, base.u);
+		#endif
+
 		char text[8] = {0};
 		utf8encode(base.u, text);
-		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){fg.red, fg.green, fg.blue});
 
+		ftxt = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255});
+
+		if (f->width != width) {
+			int sw = MAX(f->width/width, 1);
+			int sh = MAX(f->height/win.ch, 1);
+			SDL_Surface *tmp = shrinkSurface(ftxt, sw, sh);
+			SDL_FreeSurface(ftxt);
+			ftxt = tmp;
+
+			#ifdef DEBUG
+			printf("shrinking glpyh %s (%d): %d,%d %d,%d\n", text, base.u, f->width, f->height, width, win.ch);
+			#endif
+		}
 	}
 
-	if (base.u < FONTCACHESIZE) {
+	if (base.u < FONTCACHESIZE && f->cache[base.u] == 0) {
 		f->cache[base.u] = ftxt;
 
 		#ifdef DEBUG
@@ -478,27 +506,10 @@ drawglyph(Glyph base, int len, int x, int y)
 		#endif
 	}
 
-	int winx = x * win.cw;
-	int winy = y * win.ch;
-
 	clear(winx, winy, winx+width, winy+win.ch, &bg);
 
-	if (base.mode & ATTR_UNDERLINE) {
-		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
-	}
-
-	if (base.mode & ATTR_STRUCK) {
-		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
-	}
-
-	if (f->width != width) {
-		SDL_Surface *sftxt = shrinkSurface(ftxt, MAX(f->width/width, 1), MAX(f->height/win.ch, 1));
-		SDL_BlitSurface(sftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
-		SDL_FreeSurface(sftxt);
-	}
-	else {
-		SDL_BlitSurface(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
-	}
+	SDL_SetSurfaceColorMod(ftxt, fg.red, fg.green, fg.blue);
+	SDL_BlitSurface(ftxt, 0, win.txt, &(SDL_Rect){winx, winy, width, win.ch});
 
 	if (base.u >= FONTCACHESIZE) {
 		SDL_FreeSurface(ftxt);
