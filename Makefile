@@ -47,6 +47,10 @@ test: clean $(EXE)
 debug:
 	CFLAGS=-DDEBUG make test
 
+profile:
+	LDFLAGS="-g" CFLAGS="-g" make $(EXE)
+	perf record -g --call-graph dwarf $(EXE)
+
 clean:
 	rm -rf $(BUILD_DIR)
 
