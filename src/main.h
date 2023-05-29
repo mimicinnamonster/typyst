@@ -49,6 +49,7 @@ typedef struct {
 	FcCharSet *charset;
 	TTF_Font *ttf;
 	SDL_Surface **cache;
+	SDL_Texture *atlas;
 	char widths[MAXGLYPHS];
 } Font;
 
