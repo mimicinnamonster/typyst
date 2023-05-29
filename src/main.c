@@ -832,7 +832,7 @@ void
 usage(void)
 {
 	die(
-		"	-f fontconfig string\n	-a path.gif set animated gif background"
+		"	-f fontconfig string\n	-a path.gif set animated gif background\n	-t transparency"
 	);
 }
 
@@ -848,6 +848,10 @@ main(int argc, char *argv[])
 		break;
 	case 'a':
 		opt_anim = EARGF(usage());
+		break;
+	case 't':
+		char *trans = EARGF(usage());
+		alpha = strtof(trans, 0);
 		break;
 	case 'e':
 		if (argc > 0)
