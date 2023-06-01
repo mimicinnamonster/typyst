@@ -84,10 +84,9 @@ resize(int width, int height)
 
 	init_matrices();
 
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, win.tw, win.th);
+	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
-	// redraw all text on new surface
 	redraw();
 
 	tresize(cols, rows);
@@ -174,14 +173,13 @@ clear(int x1, int y1, int x2, int y2, RenderColor *col)
 	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
 	SDL_RenderFillRect(win.rnd, &dest);
 
-	/*
+	//unsigned int col2 = col->red << 24 | col->green << 16 | col->blue << 8 | col->alpha;
 	SDL_Surface *tmp = 0;
 	SDL_LockTextureToSurface(win.txt, &dest, &tmp);
+	assert(tmp);
 	SDL_FillRect(tmp, &dest, 0);
 	SDL_UnlockTexture(win.txt);
-	*/
 
-	//unsigned int col2 = 0;//col->red << 24 | col->green << 16 | col->blue << 8 | col->alpha;
 }
 
 int
@@ -546,7 +544,7 @@ drawglyph(Glyph base, int len, int x, int y)
 			}
 		}
 
-		SDL_FreeSurface(fsur);
+		//SDL_FreeSurface(fsur);
 	}
 
 	int winx = x * win.cw;
@@ -579,7 +577,7 @@ drawglyph(Glyph base, int len, int x, int y)
 		vertices[no+4].tex_coord = (SDL_FPoint){x2,	1};
 		vertices[no+5].tex_coord = (SDL_FPoint){x2,	0};
 	} else {
-		SDL_Rect dest = {winx,winy,win.cw*glyph_width,win.ch};
+		SDL_Rect dest = {winx, winy, f->cache[base.u]->w, f->cache[base.u]->h };
 		//void *pixels;
 		//int pitch;
 		//SDL_LockTexture(win.txt, &dest, &pixels, &pitch);
@@ -588,7 +586,7 @@ drawglyph(Glyph base, int len, int x, int y)
 	}
 
 	if (base.u >= FONTCACHESIZE) {
-		SDL_DestroyTexture(ftxt);
+		//SDL_DestroyTexture(ftxt);
 		SDL_FreeSurface(ftxt);
 	}
 }
