@@ -1,5 +1,13 @@
 #!/bin/bash
 
+#esc() {
+#  printf "\033[$1m"
+#}
+#
+#echo $(esc 1) bold $(esc 0)
+#
+#exit
+
 #echo "base"
 #for x in {0..8}; do for i in {30..37}; do for a in {40..47}; do echo -ne "\e[$x;$i;$a""m\\\e[$x;$i;$a""m\e[0;37;40m "; done; echo; done; done; echo ""
 
@@ -46,7 +54,7 @@ echo $(color 7 90) bright white $(esc 0)
 
 echo $(esc 1) bold $(esc 0)
 
-printf "glyph: %s code point: %x\n" ∈ \'∈
-printf "glyph: %s code point: %x\n" ⚠ \'⚠
-printf "glyph: %s code point: %x\n" ⌘ \'⌘
-printf "glyph: %s code point: %x\n" ┐ \'┐
+#printf "glyph: %s code point: %x\n" ∈ \'∈
+#printf "glyph: %s code point: %x\n" ⚠ \'⚠
+#printf "glyph: %s code point: %x\n" ⌘ \'⌘
+#printf "glyph: %s code point: %x\n" ┐ \'┐

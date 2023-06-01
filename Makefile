@@ -41,6 +41,9 @@ run: $(EXE)
 test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
+test2: clean $(EXE)
+	$(EXE) bash ./test2.sh
+
 debug:
 	CFLAGS="-g -DDEBUG" LDFLAGS="-g" make test
 

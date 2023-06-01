@@ -9,10 +9,10 @@
 
 #define MAXGLYPHS 1114112
 
-#define IS_SET(flag)		((win.mode & (flag)) != 0)
-#define TRUERED(x)		(((x) & 0xff0000) >> 8)
-#define TRUEGREEN(x)		(((x) & 0xff00))
-#define TRUEBLUE(x)		(((x) & 0xff) << 8)
+#define IS_SET(flag)	((win.mode & (flag)) != 0)
+#define TRUERED(x)		(((x) & 0xff0000) >> 16)
+#define TRUEGREEN(x)	(((x) & 0xff00) >> 8)
+#define TRUEBLUE(x)		(((x) & 0xff))
 
 typedef unsigned int Color;
 
@@ -38,6 +38,8 @@ typedef struct {
 	int ttyfd;
 } TermWindow;
 
+struct FontSetStruct;
+
 typedef struct {
 	int height;
 	int width;
@@ -49,12 +51,13 @@ typedef struct {
 	FcCharSet *charset;
 	TTF_Font *ttf;
 	SDL_Surface **cache;
-	SDL_Texture *atlas;
 	char widths[MAXGLYPHS];
+	void *fontset;
 } Font;
 
-typedef struct {
+typedef struct FontSetStruct {
 	Font font, bfont, ifont, ibfont;
+	SDL_Texture *atlas;
 } FontSet;
 
 typedef struct {
