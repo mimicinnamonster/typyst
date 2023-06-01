@@ -21,7 +21,7 @@
 
 inline ushort sixd_to_16bit(int);
 void drawglyph(Glyph, int, int, int);
-void clear(int, int, int, int, RenderColor *);
+void clear(int, int, RenderColor *);
 void init();
 void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
@@ -35,6 +35,7 @@ TermWindow win;
 Animation anim;
 DrawingContext dc;
 double usedfontsize = 0;
+Geometry backgeo;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
@@ -78,6 +79,8 @@ resize(int width, int height)
 	#ifdef DEBUG
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
+
+	init_geometry(&backgeo);
 
 	for (int i=0; i<dc.fontsetlen; i++) {
 		init_geometry(&(dc.fontsets[i].geo));
@@ -166,9 +169,24 @@ setcolorname(int x, const char *name)
 }
 
 void
-clear(int x1, int y1, int x2, int y2, RenderColor *col)
+clear(int x, int y, RenderColor *col)
 {
+	int cols = win.tw/win.cw;
+	int no = 6*(y*cols+x);
+
+	SDL_Color sdlcolor = {col->red, col->green, col->blue, col->alpha};
+	backgeo.verts[no+0].color = sdlcolor;
+	backgeo.verts[no+1].color = sdlcolor;
+	backgeo.verts[no+2].color = sdlcolor;
+	backgeo.verts[no+3].color = sdlcolor;
+	backgeo.verts[no+4].color = sdlcolor;
+	backgeo.verts[no+5].color = sdlcolor;
+
 	/*
+	int x1 = x * win.cw;
+	int x2 = x1 + win.cw;
+	int y1 = y * win.ch;
+	int y1 = y1 + win.ch;
 	SDL_Rect dest = {x1, y1, x2-x1, y2-y1};
 
 	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
@@ -180,7 +198,6 @@ clear(int x1, int y1, int x2, int y2, RenderColor *col)
 	assert(tmp);
 	SDL_FillRect(tmp, &dest, &col2);
 	SDL_UnlockTexture(win.txt);
-
 	*/
 }
 
@@ -580,7 +597,7 @@ drawglyph(Glyph base, int len, int x, int y)
 	int winx = x * win.cw;
 	int winy = y * win.ch;
 
-	clear(winx, winy, winx+width, winy+win.ch, &bg);
+	clear(x, y, &bg);
 
 	int cols = win.tw/win.cw;
 	int no = 6*(y*cols+x);
@@ -972,6 +989,7 @@ run()
 			int rows = win.th/win.ch;
 			int c = 6 * cols * rows;
 
+			SDL_RenderGeometry(win.rnd, 0, backgeo.verts, c, backgeo.idxs, c);
 			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
 
 			for (int dci=0; dci<dc.fontsetlen; dci++) {
