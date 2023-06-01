@@ -36,9 +36,6 @@ Animation anim;
 DrawingContext dc;
 double usedfontsize = 0;
 
-SDL_Vertex *vertices;
-int *idxs;
-
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
 static char *opt_io	= NULL;
@@ -82,10 +79,12 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
 
-	init_matrices();
+	for (int i=0; i<dc.fontsetlen; i++) {
+		init_geometry(&(dc.fontsets[i].geo));
+	}
 
 	//SDL_PIXELFORMAT_BGRA32
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, win.tw, win.th);
+	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
 	redraw();
@@ -175,12 +174,13 @@ clear(int x1, int y1, int x2, int y2, RenderColor *col)
 	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
 	SDL_RenderFillRect(win.rnd, &dest);
 
-	//unsigned int col2 = col->red << 24 | col->green << 16 | col->blue << 8 | col->alpha;
+	long col2 = (long)col->red << 24 | (long)col->green << 16 | (long)col->blue << 8 | (long)col->alpha;
 	SDL_Surface *tmp = 0;
 	SDL_LockTextureToSurface(win.txt, &dest, &tmp);
 	assert(tmp);
-	SDL_FillRect(tmp, &dest, 0);
+	SDL_FillRect(tmp, &dest, &col2);
 	SDL_UnlockTexture(win.txt);
+
 	*/
 }
 
@@ -194,7 +194,6 @@ loadfont(Font *f, FcPattern *pattern)
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
 
-	printf("loading font %p\n", f);
 	FcPattern *duplicate = FcPatternDuplicate(pattern);
 	f->pattern = duplicate;
 	FcConfigSubstitute(NULL, f->pattern, FcMatchPattern);
@@ -241,7 +240,6 @@ loadfontset(FcPattern *pattern)
 	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
-	printf("loading fontset %p\n", fontset->font);
 
 	double fontval;
 
@@ -380,7 +378,7 @@ selectglyphfont(Glyph base)
 	if (!fontset->atlas) {
 		int w = FONTATLASSIZE * win.cw * 2;
 		int h = win.ch * 4;
-		fontset->atlas = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h);
+		fontset->atlas = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, w, h);
 		assert(fontset->atlas);
 		SDL_SetTextureBlendMode(fontset->atlas, SDL_BLENDMODE_BLEND);
 		#ifdef DEBUG
@@ -410,10 +408,10 @@ selectglyphcolors(Glyph base, RenderColor *ret_fg, RenderColor *ret_bg)
 
 	if (IS_TRUECOL(base.bg)) {
 		colbg.alpha = 0xff;
-		colbg.green = TRUEGREEN(base.bg);
 		colbg.red = TRUERED(base.bg);
+		colbg.green = TRUEGREEN(base.bg);
 		colbg.blue = TRUEBLUE(base.bg);
-		bg = &truebg;
+		bg = &colbg;
 	} else {
 		bg = &dc.col[base.bg];
 	}
@@ -506,6 +504,9 @@ drawglyph(Glyph base, int len, int x, int y)
 	selectglyphcolors(base, &fg, &bg);
 
 	Font *f = selectglyphfont(base);
+	FontSet *fs = f->fontset;
+	assert(fs);
+	assert(fs->atlas);
 
 	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
 	int width = win.cw * charlen;
@@ -571,9 +572,6 @@ drawglyph(Glyph base, int len, int x, int y)
 				#ifdef DEBUG
 				printf("atlasing glyph %lc (%d) at pos: %d %d\n", base.u, base.u, atlasrect.x, atlasrect.y);
 				#endif
-				FontSet *fs = f->fontset;
-				assert(fs);
-				assert(fs->atlas);
 				SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
 			}
 		}
@@ -588,12 +586,12 @@ drawglyph(Glyph base, int len, int x, int y)
 	int no = 6*(y*cols+x);
 
 	SDL_Color sdlcol = {fg.red, fg.green, fg.blue, fg.alpha};
-	vertices[no+0].color = sdlcol;
-	vertices[no+1].color = sdlcol;
-	vertices[no+2].color = sdlcol;
-	vertices[no+3].color = sdlcol;
-	vertices[no+4].color = sdlcol;
-	vertices[no+5].color = sdlcol;
+	fs->geo.verts[no+0].color = sdlcol;
+	fs->geo.verts[no+1].color = sdlcol;
+	fs->geo.verts[no+2].color = sdlcol;
+	fs->geo.verts[no+3].color = sdlcol;
+	fs->geo.verts[no+4].color = sdlcol;
+	fs->geo.verts[no+5].color = sdlcol;
 
 	int glyph_width = getglyphwidth(base.u);
 	if (base.u < FONTATLASSIZE) {
@@ -608,12 +606,12 @@ drawglyph(Glyph base, int len, int x, int y)
 		float y1 = atlas_hoffset;
 		float y2 = y1 + atlas_hstep;
 
-		vertices[no+0].tex_coord = (SDL_FPoint){x1,	y1};
-		vertices[no+1].tex_coord = (SDL_FPoint){x2,	y1};
-		vertices[no+2].tex_coord = (SDL_FPoint){x1,	y2};
-		vertices[no+3].tex_coord = (SDL_FPoint){x1,	y2};
-		vertices[no+4].tex_coord = (SDL_FPoint){x2,	y2};
-		vertices[no+5].tex_coord = (SDL_FPoint){x2,	y1};
+		fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
+		fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
+		fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
+		fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
+		fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
+		fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
 	} else {
 		SDL_Rect txtrect = {winx, winy, f->cache[base.u]->w, f->cache[base.u]->h };
 		SDL_UpdateTexture(win.txt, &txtrect, f->cache[base.u]->pixels, f->cache[base.u]->pitch);
@@ -893,17 +891,19 @@ read_tty() {
 	}
 }
 
+
+
 void
-init_matrices() {
+init_geometry(Geometry *geo) {
+	if (geo->verts) free(geo->verts);
+	if (geo->idxs) free(geo->idxs);
+
 	unsigned int w = win.w/win.cw;
 	unsigned int h = win.h/win.ch;
 	unsigned int c = 6 * w * h;
 
-	if (vertices) free(vertices);
-	if (idxs) free(idxs);
-
-	vertices = calloc(c, sizeof(SDL_Vertex));
-	idxs = calloc(c, sizeof(int));
+	geo->verts = calloc(c, sizeof(SDL_Vertex));
+	geo->idxs = calloc(c, sizeof(int));
 
 	for (int y=0; y<h; y++) {
 		for (int x=0; x<w; x++) {
@@ -912,18 +912,18 @@ init_matrices() {
 			float y1 = y * win.ch;
 			float x2 = x1 + win.cw;
 			float y2 = y1 + win.ch;
-			vertices[no+0] = (SDL_Vertex){{x1, y1}};
-			vertices[no+1] = (SDL_Vertex){{x2, y1}};
-			vertices[no+2] = (SDL_Vertex){{x1, y2}};
-			vertices[no+3] = (SDL_Vertex){{x1, y2}};
-			vertices[no+4] = (SDL_Vertex){{x2, y2}};
-			vertices[no+5] = (SDL_Vertex){{x2, y1}};
-			idxs[no+0] = no+0;
-			idxs[no+1] = no+1;
-			idxs[no+2] = no+2;
-			idxs[no+3] = no+3;
-			idxs[no+4] = no+4;
-			idxs[no+5] = no+5;
+			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}};
+			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}};
+			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}};
+			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}};
+			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}};
+			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}};
+			(geo->idxs)[no+0] = no+0;
+			(geo->idxs)[no+1] = no+1;
+			(geo->idxs)[no+2] = no+2;
+			(geo->idxs)[no+3] = no+3;
+			(geo->idxs)[no+4] = no+4;
+			(geo->idxs)[no+5] = no+5;
 		}
 	}
 }
@@ -960,8 +960,6 @@ run()
 		}
 
 		if (shouldDraw) {
-			//drawglyph((Glyph){.u=9888},1,1,1); // ⚠
-
 			if (opt_anim) {
 				int frame = tx_anim_len-1;
 				if (tx_anim_len > anim.curr)
@@ -977,11 +975,9 @@ run()
 			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
 
 			for (int dci=0; dci<dc.fontsetlen; dci++) {
-				FontSet *fontset = &dc.fontsets[dci];
-				SDL_Texture *atlas  = fontset->atlas;
-
-				if (atlas);
-					SDL_RenderGeometry(win.rnd, atlas, vertices, c, idxs, c);
+				FontSet *fs = &dc.fontsets[dci];
+				if (fs->atlas)
+					SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
 			}
 			SDL_RenderPresent(win.rnd);
 		}

@@ -7,8 +7,7 @@
 #include <SDL_ttf.h>
 #include "st.h"
 
-#define MAXGLYPHS 256
-// 1114112
+#define MAXGLYPHS 1114112
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 16)
@@ -56,8 +55,14 @@ typedef struct {
 	struct FontSetStruct *fontset;
 } Font;
 
+typedef struct {
+	SDL_Vertex *verts;
+	int *idxs;
+} Geometry;
+
 typedef struct FontSetStruct {
 	Font font, bfont, ifont, ibfont;
+	Geometry geo;
 	SDL_Texture *atlas;
 } FontSet;
 
@@ -65,7 +70,7 @@ typedef struct {
 	RenderColor *col;
 	size_t collen;
 	FontSet *fontsets;
-	size_t fontsetlen;
+	int fontsetlen;
 } DrawingContext;
 
 typedef struct {
