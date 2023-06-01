@@ -194,7 +194,9 @@ loadfont(Font *f, FcPattern *pattern)
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
 
-	f->pattern = FcPatternDuplicate(pattern);
+	printf("loading font %p\n", f);
+	FcPattern *duplicate = FcPatternDuplicate(pattern);
+	f->pattern = duplicate;
 	FcConfigSubstitute(NULL, f->pattern, FcMatchPattern);
 
 	f->match = FcFontMatch(NULL, f->pattern, &result);
@@ -238,6 +240,8 @@ loadfontset(FcPattern *pattern)
 {
 	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
+	*fontset = (FontSet){0};
+	printf("loading fontset %p\n", fontset->font);
 
 	double fontval;
 
@@ -254,10 +258,12 @@ loadfontset(FcPattern *pattern)
 		usedfontsize = 12;
 	}
 
+	printf("loading font from fontset %p\n", fontset->font);
+
 	if (loadfont(&fontset->font, pattern))
-		return;
+		assert(0);
+
 	fontset->atlas = 0;
-	fontset->font.fontset = fontset;
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -267,17 +273,23 @@ loadfontset(FcPattern *pattern)
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
 	loadfont(&fontset->ibfont, pattern);
-	fontset->ibfont.fontset = (void*)fontset;
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
 	loadfont(&fontset->ifont, pattern);
-	fontset->ifont.fontset = (void*)fontset;
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
 	loadfont(&fontset->bfont, pattern);
-	fontset->bfont.fontset = (void*)fontset;
+
+	// we reallocated, so we need updated all backreferences to fontsets inside fonts
+	for (size_t i=0; i<dc.fontsetlen; i++) {
+		struct FontSetStruct *fs = &dc.fontsets[i];
+		fs->font.fontset = fs;
+		fs->bfont.fontset = fs;
+		fs->ibfont.fontset = fs;
+		fs->ifont.fontset = fs;
+	}
 }
 
 void
@@ -330,12 +342,13 @@ Font *
 selectglyphfont(Glyph base)
 {
 	Font *f = 0;
-	FontSet *fontset = &dc.fontsets[0];
+	FontSet *fontset = dc.fontsets;
 
 	while (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
 		fontset++;
 	}
 
+	/*
 	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
 		FcPattern *pattern = createfontpattern(font);
 
@@ -349,10 +362,9 @@ selectglyphfont(Glyph base)
 		FcPatternDestroy(pattern);
 		FcCharSetDestroy(charset);
 	}
+	*/
 
-	f = &fontset->font;
-	f->fontset = fontset;
-	assert(f->fontset == fontset);
+	f = &(fontset->font);
 
 	/* Select right font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
@@ -561,6 +573,7 @@ drawglyph(Glyph base, int len, int x, int y)
 				#endif
 				FontSet *fs = f->fontset;
 				assert(fs);
+				assert(fs->atlas);
 				SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
 			}
 		}
@@ -737,7 +750,7 @@ handle_keypress(SDL_Event *ev)
 	char *kmapbuf = kmap(ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
-		printf("sending %d %d %d %d\n", kmapbuf[0], kmapbuf[1], kmapbuf[2], kmapbuf[3]);
+		//printf("sending %d %d %d %d\n", kmapbuf[0], kmapbuf[1], kmapbuf[2], kmapbuf[3]);
 		#endif
 
 		ttywrite(kmapbuf, strlen(kmapbuf), 0);
@@ -882,15 +895,15 @@ read_tty() {
 
 void
 init_matrices() {
-	int w = win.w/win.cw;
-	int h = win.h/win.ch;
-	int c = 6 * w * h;
+	unsigned int w = win.w/win.cw;
+	unsigned int h = win.h/win.ch;
+	unsigned int c = 6 * w * h;
 
 	if (vertices) free(vertices);
 	if (idxs) free(idxs);
 
-	vertices = calloc(w*h*6, sizeof(SDL_Vertex));
-	idxs = calloc(w*h*6, sizeof(int));
+	vertices = calloc(c, sizeof(SDL_Vertex));
+	idxs = calloc(c, sizeof(int));
 
 	for (int y=0; y<h; y++) {
 		for (int x=0; x<w; x++) {

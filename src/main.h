@@ -7,7 +7,8 @@
 #include <SDL_ttf.h>
 #include "st.h"
 
-#define MAXGLYPHS 1114112
+#define MAXGLYPHS 256
+// 1114112
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 16)
@@ -51,8 +52,8 @@ typedef struct {
 	FcCharSet *charset;
 	TTF_Font *ttf;
 	SDL_Surface **cache;
-	char widths[MAXGLYPHS];
-	void *fontset;
+	unsigned char widths[MAXGLYPHS];
+	struct FontSetStruct *fontset;
 } Font;
 
 typedef struct FontSetStruct {
