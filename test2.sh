@@ -1,3 +1,2 @@
-#printf 'hello world'
-#printf ⚠
-sleep 10
+echo ∈  hello
+sleep 1

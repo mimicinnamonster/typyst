@@ -1,14 +1,12 @@
 #!/bin/bash
 
-#esc() {
-#  printf "\033[$1m"
-#}
-#
-#echo $(esc 1) bold $(esc 0)
-#
-#exit
+esc() {
+  printf "\033[$*m"
+}
 
-echo "truecolors"
+echo "normal text"
+echo $(esc 1)bold text$(esc 0)
+
 awk -v term_cols="${width:-$(tput cols || echo 80)}" 'BEGIN{
     s="/\\";
     for (colnum = 0; colnum<term_cols; colnum++) {
@@ -51,9 +49,7 @@ awk -v term_cols="${width:-$(tput cols || echo 80)}" 'BEGIN{
 #echo $(color 5 90) bright pink $(esc 0)
 #echo $(color 6 90) bright sky $(esc 0)
 #echo $(color 7 90) bright white $(esc 0)
-#
-#echo $(esc 1) bold text line $(esc 0)
-#
+
 printf "glyph: %s code point: %x\n" ∈ \'∈
 printf "glyph: %s code point: %x\n" ⚠ \'⚠
 printf "glyph: %s code point: %x\n" ⌘ \'⌘

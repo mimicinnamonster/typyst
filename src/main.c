@@ -36,6 +36,7 @@ Animation anim;
 DrawingContext dc;
 double usedfontsize = 0;
 Geometry backgeo;
+SDL_Texture* tx_bg;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
@@ -182,23 +183,18 @@ clear(int x, int y, RenderColor *col)
 	backgeo.verts[no+4].color = sdlcolor;
 	backgeo.verts[no+5].color = sdlcolor;
 
-	/*
 	int x1 = x * win.cw;
 	int x2 = x1 + win.cw;
 	int y1 = y * win.ch;
-	int y1 = y1 + win.ch;
+	int y2 = y1 + win.ch;
 	SDL_Rect dest = {x1, y1, x2-x1, y2-y1};
 
-	SDL_SetRenderDrawColor(win.rnd, col->red, col->green, col->blue, col->alpha);
-	SDL_RenderFillRect(win.rnd, &dest);
-
-	long col2 = (long)col->red << 24 | (long)col->green << 16 | (long)col->blue << 8 | (long)col->alpha;
+	long col2 = 0;
 	SDL_Surface *tmp = 0;
 	SDL_LockTextureToSurface(win.txt, &dest, &tmp);
 	assert(tmp);
-	SDL_FillRect(tmp, &dest, &col2);
+	SDL_FillRect(tmp, &dest, col2);
 	SDL_UnlockTexture(win.txt);
-	*/
 }
 
 int
@@ -273,8 +269,6 @@ loadfontset(FcPattern *pattern)
 		usedfontsize = 12;
 	}
 
-	printf("loading font from fontset %p\n", fontset->font);
-
 	if (loadfont(&fontset->font, pattern))
 		assert(0);
 
@@ -332,8 +326,7 @@ init()
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	ttyresize(cols, rows); // send terminal size to the terminal
 
-	// prepare sdl window
-	if (SDL_Init(SDL_INIT_VIDEO) < 0) die("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+	assert(!SDL_Init(SDL_INIT_VIDEO));
 
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
@@ -342,6 +335,13 @@ init()
 
 	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
+	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
+
+	SDL_Surface* tmp = SDL_CreateRGBSurface(0, 1, 1, 32, RMASK, GMASK, BMASK, AMASK);
+	SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_BLEND);
+	SDL_FillRect(tmp, 0, 0x10101010);
+	tx_bg = SDL_CreateTextureFromSurface(win.rnd, tmp);
+	SDL_FreeSurface(tmp);
 
 	resize(w, h);
 
@@ -509,6 +509,8 @@ getglyphwidth(Rune u)
 void
 drawglyph(Glyph base, int len, int x, int y)
 {
+	/*
+	//TODO: render to win.txt
 	if (base.mode & ATTR_UNDERLINE) {
 		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
 	}
@@ -516,6 +518,7 @@ drawglyph(Glyph base, int len, int x, int y)
 	if (base.mode & ATTR_STRUCK) {
 		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
 	}
+	*/
 
 	RenderColor bg, fg;
 	selectglyphcolors(base, &fg, &bg);
@@ -543,15 +546,15 @@ drawglyph(Glyph base, int len, int x, int y)
 		font_type = 1;
 	}
 
-	if (!ftxt) {
-		char text[8] = {0};
-		utf8encode(base.u, text);
+	char text[8] = {0};
+	utf8encode(base.u, text);
 
+	if (!ftxt) {
 		#ifdef DEBUG
-		printf("rendering glyph %s %d\n", text, base.u);
+		printf("producing glyph %s %d\n", text, base.u);
 		#endif
 
-		SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255});
+		SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
 
 		if (f->width != width) {
 			#ifdef DEBUG
@@ -629,9 +632,16 @@ drawglyph(Glyph base, int len, int x, int y)
 		fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
 		fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
 		fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
+
+		#ifdef DEBUG
+		if (base.u != 32) printf("fast rendering %s (%d)\n", text, base.u);
+		#endif
 	} else {
 		SDL_Rect txtrect = {winx, winy, f->cache[base.u]->w, f->cache[base.u]->h };
 		SDL_UpdateTexture(win.txt, &txtrect, f->cache[base.u]->pixels, f->cache[base.u]->pitch);
+		#ifdef DEBUG
+		printf("slow rendering %s (%d)\n", text, base.u);
+		#endif
 	}
 
 	if (base.u >= FONTCACHESIZE) {
@@ -929,12 +939,12 @@ init_geometry(Geometry *geo) {
 			float y1 = y * win.ch;
 			float x2 = x1 + win.cw;
 			float y2 = y1 + win.ch;
-			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}};
-			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}};
-			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}};
-			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}};
-			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}};
-			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}};
+			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0, 0, 0, 128}, {0, 0}};
+			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 128}, {1, 0}};
+			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 128}, {0, 1}};
+			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 128}, {0, 1}};
+			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}, {0, 0, 0, 128}, {1, 1}};
+			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 128}, {1, 0}};
 			(geo->idxs)[no+0] = no+0;
 			(geo->idxs)[no+1] = no+1;
 			(geo->idxs)[no+2] = no+2;
@@ -955,7 +965,7 @@ run()
 	int shouldDraw = 0;
 
 	while (1) {
-		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255);
 		SDL_RenderClear(win.rnd);
 
 		read_events();
@@ -989,7 +999,7 @@ run()
 			int rows = win.th/win.ch;
 			int c = 6 * cols * rows;
 
-			SDL_RenderGeometry(win.rnd, 0, backgeo.verts, c, backgeo.idxs, c);
+			SDL_RenderGeometry(win.rnd, tx_bg, backgeo.verts, c, backgeo.idxs, c);
 			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
 
 			for (int dci=0; dci<dc.fontsetlen; dci++) {
@@ -997,6 +1007,7 @@ run()
 				if (fs->atlas)
 					SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
 			}
+
 			SDL_RenderPresent(win.rnd);
 		}
 	}
