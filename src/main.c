@@ -521,8 +521,10 @@ render_glyphs()
 		SDL_Color fg, bg;
 		selectglyphcolors(g, &fg, &bg);
 
-		int winx = x * win.cw;
-		int winy = y * win.ch;
+		float w = win.tw/cols;
+		float h = win.th/rows;
+		float winx = x * w;
+		float winy = y * h;
 		int no = 6*id;
 
 		Font *f = selectglyphfont(g);
@@ -537,7 +539,6 @@ render_glyphs()
 
 		SDL_Surface *ftxt = 0;
 
-		//TODO: SDL_Rect txt_rect = {winx, winy, f->cache[g.u]->w, f->cache[g.u]->h};
 		SDL_Rect txt_rect = {winx, winy, width, win.ch};
 
 		/*
@@ -988,6 +989,8 @@ init_geometry(Geometry *geo) {
 	if (geo->idxs) free(geo->idxs);
 
 	unsigned int c = 6 * cols * rows;
+	float w = win.w / cols;
+	float h = win.h / rows;
 
 	geo->verts = calloc(c, sizeof(SDL_Vertex));
 	geo->idxs = calloc(c, sizeof(int));
@@ -995,16 +998,16 @@ init_geometry(Geometry *geo) {
 	for (int y=0; y<rows; y++) {
 		for (int x=0; x<cols; x++) {
 			int no = 6 * (cols * y + x);
-			float x1 = x * win.cw;
-			float y1 = y * win.ch;
-			float x2 = x1 + win.cw;
-			float y2 = y1 + win.ch;
-			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0, 0, 0, 128}, {0, 0}};
-			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 128}, {1, 0}};
-			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 128}, {0, 1}};
-			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 128}, {0, 1}};
-			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}, {0, 0, 0, 128}, {1, 1}};
-			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 128}, {1, 0}};
+			float x1 = x * w;
+			float y1 = y * h;
+			float x2 = x1 + w;
+			float y2 = y1 + h;
+			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0, 0, 0, 0}, {0, 0}};
+			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 0}, {1, 0}};
+			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 0}, {0, 1}};
+			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 0}, {0, 1}};
+			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}, {0, 0, 0, 0}, {1, 1}};
+			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 0}, {1, 0}};
 			(geo->idxs)[no+0] = no+0;
 			(geo->idxs)[no+1] = no+1;
 			(geo->idxs)[no+2] = no+2;
