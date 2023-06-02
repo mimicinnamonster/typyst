@@ -11,12 +11,12 @@ PKGCONF_DEPS = fontconfig sdl2 SDL2_ttf SDL2_gfx
 SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
 INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
-LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)`
+LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg 
 EXE = $(BUILD_DIR)/$(NAME)
 
-BASE_CFLAGS = -DVERSION=\"$(VERSION)\" -D_XOPEN_SOURCE=600 -fsanitize=address -fsanitize=undefined # -Wall -Wextra -fanalyzer
+BASE_CFLAGS = # -fprofile-arcs -ftest-coverage # -fsanitize=address -fsanitize=undefined # -Wall -Wextra -fanalyzer
 
-BASE_LDFLAGS = -fsanitize=address -fsanitize=undefined
+BASE_LDFLAGS = # -fprofile-arcs -ftest-coverage # -fsanitize=address -fsanitize=undefined
 
 CC_CFLAGS = $(INCS) $(BASE_CFLAGS) $(CFLAGS)
 CC_LDFLAGS = $(LIBS) $(BASE_LDFLAGS) $(LDFLAGS)
@@ -36,7 +36,7 @@ $(BUILD_DIR)/%.o: src/%.c | build_dir
 	$(CC) $(CC_CFLAGS) -o $@ -c $<
 
 $(EXE): $(OBJ) | build_dir
-	$(CC) $(CC_LDFLAGS) -o $@ $(OBJ)
+	$(CC) -o $@ $(OBJ) $(CC_LDFLAGS)
 
 run: $(EXE)
 	$(EXE)
