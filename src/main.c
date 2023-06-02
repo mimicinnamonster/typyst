@@ -21,7 +21,6 @@
 
 inline ushort sixd_to_16bit(int);
 void drawglyph(Glyph, int, int, int);
-void clear(int, int, RenderColor *);
 void init();
 void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
@@ -34,22 +33,22 @@ void loadfontset(FcPattern *pattern);
 TermWindow win;
 Animation anim;
 DrawingContext dc;
-double usedfontsize = 0;
-Geometry backgeo;
+double usedfontsize;
 SDL_Texture* tx_bg;
+SDL_Texture **tx_anim;
+unsigned int tx_anim_len;
 
 static char **opt_cmd	= NULL;
 static char *opt_embed  = NULL;
 static char *opt_io	= NULL;
 static char *opt_line	= NULL;
 static char *opt_anim   = NULL;
-static int opt_size     = 22;
+static int opt_size	 = 22;
 
 void bell()
 {
 	// TODO: bell
 }
-
 
 void
 setmode(int set, unsigned int flags)
@@ -81,15 +80,16 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
 
-	init_geometry(&backgeo);
-
 	for (int i=0; i<dc.fontsetlen; i++) {
 		init_geometry(&(dc.fontsets[i].geo));
 	}
 
 	//SDL_PIXELFORMAT_BGRA32
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, win.tw, win.th);
+	//SDL_TEXTUREACCESS_STREAMING 
+	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
+
+	win.glyphs = reallocarray(win.glyphs, cols*rows, sizeof(Glyph));
 
 	redraw();
 
@@ -167,34 +167,6 @@ setcolorname(int x, const char *name)
 	dc.col[x] = ncolor;
 
 	return 0;
-}
-
-void
-clear(int x, int y, RenderColor *col)
-{
-	int cols = win.tw/win.cw;
-	int no = 6*(y*cols+x);
-
-	SDL_Color sdlcolor = {col->red, col->green, col->blue, col->alpha};
-	backgeo.verts[no+0].color = sdlcolor;
-	backgeo.verts[no+1].color = sdlcolor;
-	backgeo.verts[no+2].color = sdlcolor;
-	backgeo.verts[no+3].color = sdlcolor;
-	backgeo.verts[no+4].color = sdlcolor;
-	backgeo.verts[no+5].color = sdlcolor;
-
-	int x1 = x * win.cw;
-	int x2 = x1 + win.cw;
-	int y1 = y * win.ch;
-	int y2 = y1 + win.ch;
-	SDL_Rect dest = {x1, y1, x2-x1, y2-y1};
-
-	long col2 = 0;
-	SDL_Surface *tmp = 0;
-	SDL_LockTextureToSurface(win.txt, &dest, &tmp);
-	assert(tmp);
-	SDL_FillRect(tmp, &dest, col2);
-	SDL_UnlockTexture(win.txt);
 }
 
 int
@@ -336,6 +308,7 @@ init()
 	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
+	SDL_RenderSetVSync(win.rnd, 1);
 
 	SDL_Surface* tmp = SDL_CreateRGBSurface(0, 1, 1, 32, RMASK, GMASK, BMASK, AMASK);
 	SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_BLEND);
@@ -407,7 +380,7 @@ selectglyphfont(Glyph base)
 }
 
 void
-selectglyphcolors(Glyph base, RenderColor *ret_fg, RenderColor *ret_bg)
+selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 {
 	RenderColor *fg, *bg;
 	RenderColor *temp;
@@ -479,8 +452,15 @@ selectglyphcolors(Glyph base, RenderColor *ret_fg, RenderColor *ret_bg)
 	if (base.mode & ATTR_INVISIBLE)
 		fg = bg;
 
-	*ret_fg = *fg;
-	*ret_bg = *bg;
+	ret_fg->r = fg->red;
+	ret_fg->b = fg->blue;
+	ret_fg->g = fg->green;
+	ret_fg->a = fg->alpha;
+
+	ret_bg->r = bg->red;
+	ret_bg->b = bg->blue;
+	ret_bg->g = bg->green;
+	ret_bg->a = bg->alpha;
 }
 
 int
@@ -509,144 +489,228 @@ getglyphwidth(Rune u)
 void
 drawglyph(Glyph base, int len, int x, int y)
 {
-	/*
-	//TODO: render to win.txt
-	if (base.mode & ATTR_UNDERLINE) {
-		drawglyph((Glyph){ '_', base.mode ^ ATTR_UNDERLINE, base.fg, base.bg }, len, x, y);
-	}
+	int id =(y*cols+x);
+	win.glyphs[id] = base;
+}
 
-	if (base.mode & ATTR_STRUCK) {
-		drawglyph((Glyph){ '-', base.mode ^ ATTR_STRUCK, base.fg, base.bg }, len, x, y);
-	}
-	*/
+void
+render_glyphs()
+{
+	if (win.drawing || !win.updated)
+		return;
 
-	RenderColor bg, fg;
-	selectglyphcolors(base, &fg, &bg);
+	fps();
 
-	Font *f = selectglyphfont(base);
-	FontSet *fs = f->fontset;
-	assert(fs);
-	assert(fs->atlas);
-
-	int charlen = len * ((base.mode & ATTR_WIDE) ? 2 : 1);
-	int width = win.cw * charlen;
-
-	SDL_Surface *ftxt = 0;
-
-	if (base.u < FONTCACHESIZE && f->cache[base.u]) {
-		ftxt = f->cache[base.u];
-	}
-
-	int font_type = 0;
-	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
-		font_type = 3;
-	} else if (base.mode & ATTR_ITALIC) {
-		font_type = 2;
-	} else if (base.mode & ATTR_BOLD) {
-		font_type = 1;
-	}
-
-	char text[8] = {0};
-	utf8encode(base.u, text);
-
-	if (!ftxt) {
-		#ifdef DEBUG
-		printf("producing glyph %s %d\n", text, base.u);
-		#endif
-
-		SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
-
-		if (f->width != width) {
-			#ifdef DEBUG
-			printf("shrinking %s %d\n", text, base.u);
-			#endif
-
-			int nw = MAX(f->width/width, 1);
-			int nh = MAX(f->height/win.ch, 1);
-			SDL_Surface *shrunk = shrinkSurface(fsur, nw, nh);
-			SDL_FreeSurface(fsur);
-			fsur = shrunk;
-		}
-
-		#ifdef DEBUG
-		printf("font texture size: %d x %d\n", fsur->w, fsur->h);
-		#endif
-
-		ftxt = fsur;
-
-		if (f->cache[base.u] == 0) {
-			if (base.u < FONTCACHESIZE) {
-				#ifdef DEBUG
-				printf("caching glyph %lc\n", base.u);
-				#endif
-				f->cache[base.u] = ftxt;
-			}
-
-			if (base.u < FONTATLASSIZE) {
-				SDL_Rect atlasrect = {
-					base.u * win.cw * 2,
-					font_type * win.ch,
-					win.cw,
-					win.ch
-				};
-				#ifdef DEBUG
-				printf("atlasing glyph %lc (%d) at pos: %d %d\n", base.u, base.u, atlasrect.x, atlasrect.y);
-				#endif
-				SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
-			}
-		}
-	}
-
-	int winx = x * win.cw;
-	int winy = y * win.ch;
-
-	clear(x, y, &bg);
+	SDL_SetRenderTarget(win.rnd, win.txt);
 
 	int cols = win.tw/win.cw;
-	int no = 6*(y*cols+x);
+	int rows = win.th/win.ch;
 
-	SDL_Color sdlcol = {fg.red, fg.green, fg.blue, fg.alpha};
-	fs->geo.verts[no+0].color = sdlcol;
-	fs->geo.verts[no+1].color = sdlcol;
-	fs->geo.verts[no+2].color = sdlcol;
-	fs->geo.verts[no+3].color = sdlcol;
-	fs->geo.verts[no+4].color = sdlcol;
-	fs->geo.verts[no+5].color = sdlcol;
+	for (int id = 0; id < cols*rows; id++) {
+		Glyph g = win.glyphs[id];
 
-	int glyph_width = getglyphwidth(base.u);
-	if (base.u < FONTATLASSIZE) {
-		float atlas_step = 1.0 / FONTATLASSIZE;
-		float atlas_offset = atlas_step * base.u;
-		int glyph_width_factor = 2 * (1 / glyph_width);
-		float x1 = atlas_offset;
-		float x2 = x1 + atlas_step / glyph_width_factor;
+		int len = 1;
+		int y = id/cols;
+		int x = id - y * cols;
 
-		float atlas_hstep = 1.0 / 4;
-		float atlas_hoffset = atlas_hstep * font_type;
-		float y1 = atlas_hoffset;
-		float y2 = y1 + atlas_hstep;
+		SDL_Color fg, bg;
+		selectglyphcolors(g, &fg, &bg);
+	
+		int winx = x * win.cw;
+		int winy = y * win.ch;
+		int no = 6*id;
 
-		fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
-		fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
-		fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
-		fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
-		fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
-		fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
+		//TODO: SDL_Rect txt_rect = {winx, winy, f->cache[g.u]->w, f->cache[g.u]->h};
+		SDL_Rect txt_rect = {winx, winy, win.cw, win.ch};
 
-		#ifdef DEBUG
-		if (base.u != 32) printf("fast rendering %s (%d)\n", text, base.u);
-		#endif
-	} else {
-		SDL_Rect txtrect = {winx, winy, f->cache[base.u]->w, f->cache[base.u]->h };
-		SDL_UpdateTexture(win.txt, &txtrect, f->cache[base.u]->pixels, f->cache[base.u]->pitch);
-		#ifdef DEBUG
-		printf("slow rendering %s (%d)\n", text, base.u);
-		#endif
+		/*
+		//TODO: render to win.txt
+		if (g.mode & ATTR_UNDERLINE) drawglyph((Glyph){ '_', g.mode ^ ATTR_UNDERLINE, g.fg, g.bg }, len, x, y);
+		if (g.mode & ATTR_STRUCK) drawglyph((Glyph){ '-', g.mode ^ ATTR_STRUCK, g.fg, g.bg }, len, x, y);
+		*/
+	
+		// clear
+		SDL_SetRenderDrawColor(win.rnd, bg.r, bg.b, bg.g, 255*alpha);
+		SDL_RenderFillRect(win.rnd, &txt_rect);
+
+		if (!g.u)
+			continue;
+
+		Font *f = selectglyphfont(g);
+		assert(f);
+
+		FontSet *fs = f->fontset;
+		assert(fs);
+		assert(fs->atlas);
+
+		int charlen = len * ((g.mode & ATTR_WIDE) ? 2 : 1);
+		int width = win.cw * charlen;
+	
+		SDL_Surface *ftxt = 0;
+	
+		if (g.u < FONTCACHESIZE && f->cache[g.u]) {
+			ftxt = f->cache[g.u];
+		}
+	
+		int font_type = 0;
+		if (g.mode & ATTR_ITALIC && g.mode & ATTR_BOLD) {
+			font_type = 3;
+		} else if (g.mode & ATTR_ITALIC) {
+			font_type = 2;
+		} else if (g.mode & ATTR_BOLD) {
+			font_type = 1;
+		}
+	
+		char text[8] = {0};
+		utf8encode(g.u, text);
+	
+		if (!ftxt) {
+			#ifdef DEBUG
+			printf("producing glyph %s %d\n", text, g.u);
+			#endif
+	
+			SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
+			assert(fsur);
+	
+			if (f->width != width) {
+				#ifdef DEBUG
+				printf("shrinking %s %d\n", text, g.u);
+				#endif
+	
+				int nw = MAX(f->width/width, 1);
+				int nh = MAX(f->height/win.ch, 1);
+				SDL_Surface *shrunk = shrinkSurface(fsur, nw, nh);
+				SDL_FreeSurface(fsur);
+				fsur = shrunk;
+			}
+	
+			#ifdef DEBUG
+			printf("font texture size: %d x %d\n", fsur->w, fsur->h);
+			#endif
+	
+			ftxt = SDL_CreateTextureFromSurface(win.rnd, fsur);
+	
+			if (f->cache[g.u] == 0) {
+				if (g.u < FONTCACHESIZE) {
+					#ifdef DEBUG
+					printf("caching glyph %lc\n", g.u);
+					#endif
+					f->cache[g.u] = ftxt;
+				}
+	
+				if (g.u < FONTATLASSIZE) {
+					SDL_Rect atlasrect = {
+						g.u * win.cw * 2,
+						font_type * win.ch,
+						win.cw,
+						win.ch
+					};
+					#ifdef DEBUG
+					printf("atlasing glyph %lc (%d) at pos: %d %d\n", g.u, g.u, atlasrect.x, atlasrect.y);
+					#endif
+					SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
+				}
+			}
+
+			SDL_FreeSurface(fsur);
+		}
+	
+		// render
+		if (1) {
+			fs->geo.verts[no+0].color = fg;
+			fs->geo.verts[no+1].color = fg;
+			fs->geo.verts[no+2].color = fg;
+			fs->geo.verts[no+3].color = fg;
+			fs->geo.verts[no+4].color = fg;
+			fs->geo.verts[no+5].color = fg;
+
+			int glyph_width = getglyphwidth(g.u);
+			if (g.u < FONTATLASSIZE) {
+				float atlas_step = 1.0 / FONTATLASSIZE;
+				float atlas_offset = atlas_step * g.u;
+				int glyph_width_factor = 2 * (1 / glyph_width);
+				float x1 = atlas_offset;
+				float x2 = x1 + atlas_step / glyph_width_factor;
+		
+				float atlas_hstep = 1.0 / 4;
+				float atlas_hoffset = atlas_hstep * font_type;
+				float y1 = atlas_hoffset;
+				float y2 = y1 + atlas_hstep;
+		
+				fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
+				fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
+				fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
+				fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
+				fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
+				fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
+		
+				#ifdef DEBUG
+				//if (g.u != 32) printf("fast rendering %s (%d)\n", text, g.u);
+				#endif
+			} else {
+				//SDL_UpdateTexture(win.txt, &txt_rect, f->cache[g.u]->pixels, f->cache[g.u]->pitch);
+				SDL_RenderCopy(win.rnd, ftxt, 0, &txt_rect);
+				#ifdef DEBUG
+				//printf("slow rendering %s (%d)\n", text, g.u);
+				#endif
+			}
+		}
+	
+		if (g.u >= FONTCACHESIZE) {
+			SDL_DestroyTexture(ftxt);
+		}
 	}
 
-	if (base.u >= FONTCACHESIZE) {
-		SDL_FreeSurface(ftxt);
+	SDL_SetRenderTarget(win.rnd, 0);
+}
+
+void
+render_animation()
+{
+	if (!opt_anim)
+		return;
+
+	if (!animate())
+		return;
+
+	win.updated = 1;
+
+	if (anim.curr >= tx_anim_len) {
+		tx_anim_len = anim.curr+1;
+		tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
+		tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 	}
+
+	int frame = tx_anim_len-1;
+	if (tx_anim_len > anim.curr)
+		frame = anim.curr;
+	if (frame > 0)
+		SDL_RenderCopy(win.rnd, tx_anim[frame], 0, 0);
+}
+
+
+void
+render()
+{
+	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255);
+	SDL_RenderClear(win.rnd);
+
+	render_animation();
+	render_glyphs();
+
+	int cols = win.tw/win.cw;
+	int rows = win.th/win.ch;
+	int c = 6 * cols * rows;
+
+	SDL_RenderCopy(win.rnd, win.txt, 0, 0);
+
+	for (int dci=0; dci<dc.fontsetlen; dci++) {
+		FontSet *fs = &dc.fontsets[dci];
+		if (fs->atlas)
+			SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
+	}
+
+	SDL_RenderPresent(win.rnd);
 }
 
 void
@@ -669,7 +733,14 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 void
 settitle(char *p)
 {
-	// noop
+	char title[100] = {0};
+	if (p[0] == 0) {
+		SDL_SetWindowTitle(win.wnd, "typyst");
+	} else {
+		snprintf(title, 100, "typyst: %s", p);
+		SDL_SetWindowTitle(win.wnd, title);
+	}
+
 }
 
 int
@@ -918,8 +989,6 @@ read_tty() {
 	}
 }
 
-
-
 void
 init_geometry(Geometry *geo) {
 	if (geo->verts) free(geo->verts);
@@ -956,70 +1025,38 @@ init_geometry(Geometry *geo) {
 }
 
 void
-run()
-{
-	SDL_Texture *tx_txt = 0;
-	SDL_Texture **tx_anim = 0;
-	unsigned int tx_anim_len = 0;
-
-	int shouldDraw = 0;
-
-	while (1) {
-		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255);
-		SDL_RenderClear(win.rnd);
-
-		read_events();
-		read_tty();
-
-		shouldDraw = 0;
-		if (win.updated) {
-			win.updated = 0;
-			shouldDraw = 1;
-		}
-
-		if (opt_anim && animate()) {
-			shouldDraw = 1;
-			if (anim.curr >= tx_anim_len) {
-				tx_anim_len = anim.curr+1;
-				tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
-				tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
-			}
-		}
-
-		if (shouldDraw) {
-			if (opt_anim) {
-				int frame = tx_anim_len-1;
-				if (tx_anim_len > anim.curr)
-					frame = anim.curr;
-				if (frame > 0)
-					SDL_RenderCopy(win.rnd, tx_anim[frame], 0, 0);
-			}
-
-			int cols = win.tw/win.cw;
-			int rows = win.th/win.ch;
-			int c = 6 * cols * rows;
-
-			SDL_RenderGeometry(win.rnd, tx_bg, backgeo.verts, c, backgeo.idxs, c);
-			SDL_RenderCopy(win.rnd, win.txt, 0, 0);
-
-			for (int dci=0; dci<dc.fontsetlen; dci++) {
-				FontSet *fs = &dc.fontsets[dci];
-				if (fs->atlas)
-					SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
-			}
-
-			SDL_RenderPresent(win.rnd);
-		}
-	}
-}
-
-
-void
 usage(void)
 {
 	die(
 		"	-f fontconfig string\n	-a path.gif set animated gif background\n	-t transparency"
 	);
+}
+
+unsigned int lasttick;
+unsigned int framecount;
+
+void
+fps()
+{
+	unsigned int currtick = SDL_GetTicks();
+
+	if (!lasttick) {
+		lasttick = currtick;
+		return;
+	}
+
+	framecount++;
+
+	unsigned int dt = currtick - lasttick;
+
+	if (dt > 1000) {
+		char title[30] = {0};
+		snprintf(title, 30, "%d fps", framecount);
+		settitle(title);
+
+		framecount = 0;
+		lasttick = currtick;
+	}
 }
 
 int
@@ -1051,7 +1088,12 @@ main(int argc, char *argv[])
 	if (argc > 0) opt_cmd = argv;
 
 	init();
-	run();
+
+	while (1) {
+		read_events();
+		read_tty();
+		render();
+	}
 
 	return 0;
 }

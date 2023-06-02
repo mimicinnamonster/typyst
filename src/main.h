@@ -21,7 +21,6 @@
 	#define AMASK (0xff00000)
 #endif
 
-
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 16)
 #define TRUEGREEN(x)	(((x) & 0x00ff00) >> 8)
@@ -49,6 +48,7 @@ typedef struct {
 	int cursor; /* cursor style */
 	unsigned int lastfocus;
 	int ttyfd;
+	Glyph *glyphs;
 } TermWindow;
 
 struct FontSetStruct;
@@ -63,7 +63,7 @@ typedef struct {
 	FcPattern *match;
 	FcCharSet *charset;
 	TTF_Font *ttf;
-	SDL_Surface **cache;
+	SDL_Texture **cache;
 	unsigned char widths[MAXGLYPHS];
 	struct FontSetStruct *fontset;
 } Font;
