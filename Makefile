@@ -14,9 +14,14 @@ INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
 LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg 
 EXE = $(BUILD_DIR)/$(NAME)
 
-BASE_CFLAGS = # -fprofile-arcs -ftest-coverage # -fsanitize=address -fsanitize=undefined # -Wall -Wextra -fanalyzer
+BASE_CFLAGS =
+BASE_LDFLAGS =
 
-BASE_LDFLAGS = # -fprofile-arcs -ftest-coverage # -fsanitize=address -fsanitize=undefined
+DEBUG_CFLAGS = -Wall -Wextra -fsanitize=address -fsanitize=undefined # -fanalyzer # -fprofile-arcs -ftest-coverage
+DEBUG_LDFLAGS = -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-coverage
+
+RELEASE_CFLAGS = -O3 -s
+RELEASE_LDFLAGS = -O3 -s
 
 CC_CFLAGS = $(INCS) $(BASE_CFLAGS) $(CFLAGS)
 CC_LDFLAGS = $(LIBS) $(BASE_LDFLAGS) $(LDFLAGS)
@@ -38,17 +43,14 @@ $(BUILD_DIR)/%.o: src/%.c | build_dir
 $(EXE): $(OBJ) | build_dir
 	$(CC) -o $@ $(OBJ) $(CC_LDFLAGS)
 
-run: $(EXE)
-	$(EXE)
+release: clean $(EXE)
+	CFLAGS="-g -DDEBUG $(RELEASE_CFLAGS)" LDFLAGS="-g $(RELEASE_LDFLAGS)" make $(EXE)
 
 test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
-test2: clean $(EXE)
-	$(EXE) bash ./test2.sh
-
 debug:
-	CFLAGS="-g -DDEBUG" LDFLAGS="-g" make test
+	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make test
 
 profile:
 	LDFLAGS="-g" CFLAGS="-g" make $(EXE)

@@ -30,6 +30,13 @@ void loadfontset(FcPattern *pattern);
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE 10000
 
+static char **opt_cmd	= NULL;
+static char *opt_embed  = NULL;
+static char *opt_io	= NULL;
+static char *opt_line	= NULL;
+static char *opt_anim   = NULL;
+static int opt_size	 = 22;
+
 TermWindow win;
 Animation anim;
 DrawingContext dc;
@@ -37,13 +44,8 @@ double usedfontsize;
 SDL_Texture* tx_bg;
 SDL_Texture **tx_anim;
 unsigned int tx_anim_len;
-
-static char **opt_cmd	= NULL;
-static char *opt_embed  = NULL;
-static char *opt_io	= NULL;
-static char *opt_line	= NULL;
-static char *opt_anim   = NULL;
-static int opt_size	 = 22;
+unsigned int lasttick;
+unsigned int framecount;
 
 void bell()
 {
@@ -85,7 +87,6 @@ resize(int width, int height)
 	}
 
 	//SDL_PIXELFORMAT_BGRA32
-	//SDL_TEXTUREACCESS_STREAMING 
 	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
 
@@ -225,6 +226,7 @@ loadfontset(FcPattern *pattern)
 	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
+	init_geometry(&(fontset->geo));
 
 	double fontval;
 
@@ -241,10 +243,7 @@ loadfontset(FcPattern *pattern)
 		usedfontsize = 12;
 	}
 
-	if (loadfont(&fontset->font, pattern))
-		assert(0);
-
-	fontset->atlas = 0;
+	assert(!loadfont(&fontset->font, pattern));
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -253,15 +252,15 @@ loadfontset(FcPattern *pattern)
 
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	loadfont(&fontset->ibfont, pattern);
+	assert(!loadfont(&fontset->ibfont, pattern));
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	loadfont(&fontset->ifont, pattern);
+	assert(!loadfont(&fontset->ifont, pattern));
 
 	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
-	loadfont(&fontset->bfont, pattern);
+	assert(!loadfont(&fontset->bfont, pattern));;
 
 	// we reallocated, so we need updated all backreferences to fontsets inside fonts
 	for (size_t i=0; i<dc.fontsetlen; i++) {
@@ -282,6 +281,11 @@ init()
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
 	SDL_StartTextInput();
 
+	// loadfontset calls init_geometry which needs win.cw and win.ch
+	// so lets fill it with something so it doesn't SIGFPE
+	win.cw = 1;
+	win.ch = 1;
+
 	FcPattern *pattern = createfontpattern(font);
 	loadfontset(pattern);
 	FcPatternDestroy(pattern);
@@ -298,6 +302,10 @@ init()
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	ttyresize(cols, rows); // send terminal size to the terminal
 
+	#ifdef DEBUG
+	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+	#endif
+
 	assert(!SDL_Init(SDL_INIT_VIDEO));
 
 	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
@@ -312,7 +320,6 @@ init()
 	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
-	SDL_RenderSetVSync(win.rnd, 1);
 
 	SDL_Surface* tmp = SDL_CreateRGBSurface(0, 1, 1, 32, RMASK, GMASK, BMASK, AMASK);
 	SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_BLEND);
@@ -340,7 +347,6 @@ selectglyphfont(Glyph base)
 		fontset++;
 	}
 
-	/*
 	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
 		FcPattern *pattern = createfontpattern(font);
 
@@ -354,7 +360,6 @@ selectglyphfont(Glyph base)
 		FcPatternDestroy(pattern);
 		FcCharSetDestroy(charset);
 	}
-	*/
 
 	f = &(fontset->font);
 
@@ -620,44 +625,34 @@ render_glyphs()
 		}
 	
 		// render
-		if (1) {
-			fs->geo.verts[no+0].color = fg;
-			fs->geo.verts[no+1].color = fg;
-			fs->geo.verts[no+2].color = fg;
-			fs->geo.verts[no+3].color = fg;
-			fs->geo.verts[no+4].color = fg;
-			fs->geo.verts[no+5].color = fg;
+		fs->geo.verts[no+0].color = fg;
+		fs->geo.verts[no+1].color = fg;
+		fs->geo.verts[no+2].color = fg;
+		fs->geo.verts[no+3].color = fg;
+		fs->geo.verts[no+4].color = fg;
+		fs->geo.verts[no+5].color = fg;
 
-			int glyph_width = getglyphwidth(g.u);
-			if (g.u < FONTATLASSIZE) {
-				float atlas_step = 1.0 / FONTATLASSIZE;
-				float atlas_offset = atlas_step * g.u;
-				int glyph_width_factor = 2 * (1 / glyph_width);
-				float x1 = atlas_offset;
-				float x2 = x1 + atlas_step / glyph_width_factor;
-		
-				float atlas_hstep = 1.0 / 4;
-				float atlas_hoffset = atlas_hstep * font_type;
-				float y1 = atlas_hoffset;
-				float y2 = y1 + atlas_hstep;
-		
-				fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
-				fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
-				fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
-				fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
-				fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
-				fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
-		
-				#ifdef DEBUG
-				//if (g.u != 32) printf("fast rendering %s (%d)\n", text, g.u);
-				#endif
-			} else {
-				//SDL_UpdateTexture(win.txt, &txt_rect, f->cache[g.u]->pixels, f->cache[g.u]->pitch);
-				SDL_RenderCopy(win.rnd, ftxt, 0, &txt_rect);
-				#ifdef DEBUG
-				//printf("slow rendering %s (%d)\n", text, g.u);
-				#endif
-			}
+		int glyph_width = getglyphwidth(g.u);
+		if (g.u < FONTATLASSIZE) {
+			float atlas_step = 1.0 / FONTATLASSIZE;
+			float atlas_offset = atlas_step * g.u;
+			int glyph_width_factor = 2 * (1 / glyph_width);
+			float x1 = atlas_offset;
+			float x2 = x1 + atlas_step / glyph_width_factor;
+	
+			float atlas_hstep = 1.0 / 4;
+			float atlas_hoffset = atlas_hstep * font_type;
+			float y1 = atlas_hoffset;
+			float y2 = y1 + atlas_hstep;
+	
+			fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
+			fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
+			fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
+			fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
+			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
+			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
+		} else {
+			SDL_RenderCopy(win.rnd, ftxt, 0, &txt_rect);
 		}
 	
 		if (g.u >= FONTCACHESIZE) {
@@ -1035,9 +1030,6 @@ usage(void)
 		"	-f fontconfig string\n	-a path.gif set animated gif background\n	-t transparency"
 	);
 }
-
-unsigned int lasttick;
-unsigned int framecount;
 
 void
 fps()
