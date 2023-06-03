@@ -2194,6 +2194,7 @@ tresize(int col, int row)
 	/* allocate any new rows */
 	for (/* i = minrow */; i < row; i++) {
 		term.line[i] = xmalloc(col * sizeof(Glyph));
+		// TODO: LEAK! COULD BE WHY ALT BUFFER DOESNT WORK
 		term.alt[i] = xmalloc(col * sizeof(Glyph));
 	}
 	if (col > term.col) {

@@ -1,2 +1,2 @@
 #!/bin/bash
-typyst -a $(find ~/Videos/bgs/* | shuf | sed 1q) "$@"
+typyst -t 0.75 -a $(find ~/Videos/bgs/* | shuf | sed 1q) "$@"

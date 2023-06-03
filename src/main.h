@@ -9,10 +9,22 @@
 
 #define MAXGLYPHS 1114112
 
-#define IS_SET(flag)		((win.mode & (flag)) != 0)
-#define TRUERED(x)		(((x) & 0xff0000) >> 8)
-#define TRUEGREEN(x)		(((x) & 0xff00))
-#define TRUEBLUE(x)		(((x) & 0xff) << 8)
+#if SDL_BYTEORDER == SDL_BIG_ENDIAN
+	#define RMASK (0xff000000)
+	#define GMASK (0x00ff0000)
+	#define BMASK (0x0000ff00)
+	#define AMASK (0x000000ff)
+#else
+	#define RMASK (0x000000ff)
+	#define GMASK (0x0000ff00)
+	#define BMASK (0x00ff0000)
+	#define AMASK (0xff00000)
+#endif
+
+#define IS_SET(flag)	((win.mode & (flag)) != 0)
+#define TRUERED(x)		(((x) & 0xff0000) >> 16)
+#define TRUEGREEN(x)	(((x) & 0x00ff00) >> 8)
+#define TRUEBLUE(x)		(((x) & 0x0000ff) >> 0)
 
 typedef unsigned int Color;
 
@@ -25,8 +37,9 @@ typedef struct {
 
 typedef struct {
 	SDL_Window *wnd;
-	SDL_Surface *txt;
 	SDL_Renderer *rnd;
+	SDL_Texture *txt_glyphs;
+	SDL_Texture *txt_background;
 	int drawing;
 	int updated;
 	int w, h; /* window width and height */
@@ -36,7 +49,10 @@ typedef struct {
 	int cursor; /* cursor style */
 	unsigned int lastfocus;
 	int ttyfd;
+	Glyph *glyphs;
 } TermWindow;
+
+struct FontSetStruct;
 
 typedef struct {
 	int height;
@@ -48,19 +64,28 @@ typedef struct {
 	FcPattern *match;
 	FcCharSet *charset;
 	TTF_Font *ttf;
-	SDL_Surface **cache;
-	char widths[MAXGLYPHS];
+	SDL_Texture **cache;
+	int *cache_widths;
+	unsigned char widths[MAXGLYPHS];
+	struct FontSetStruct *fontset;
 } Font;
 
 typedef struct {
+	SDL_Vertex *verts;
+	int *idxs;
+} Geometry;
+
+typedef struct FontSetStruct {
 	Font font, bfont, ifont, ibfont;
+	Geometry geo;
+	SDL_Texture *atlas;
 } FontSet;
 
 typedef struct {
 	RenderColor *col;
 	size_t collen;
 	FontSet *fontsets;
-	size_t fontsetlen;
+	int fontsetlen;
 } DrawingContext;
 
 typedef struct {
