@@ -756,7 +756,7 @@ render()
 
 	SDL_UnlockMutex(mutex);
 
-	lastframe = currframe;
+	lastframe = SDL_GetTicks();
 }
 
 void
