@@ -43,18 +43,22 @@ $(BUILD_DIR)/%.o: src/%.c | build_dir
 $(EXE): $(OBJ) | build_dir
 	$(CC) -o $@ $(OBJ) $(CC_LDFLAGS)
 
-release: clean $(EXE)
-	CFLAGS="-g -DDEBUG $(RELEASE_CFLAGS)" LDFLAGS="-g $(RELEASE_LDFLAGS)" make $(EXE)
+release: clean
+	CFLAGS="-g $(RELEASE_CFLAGS)" LDFLAGS="-g $(RELEASE_LDFLAGS)" make $(EXE)
 
 test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
-debug:
-	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make test
+debug: clean
+	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make $(EXE)
+	#$(EXE) -a ~/Videos/bgs/girl.gif bash --init-file ./test.sh
+	$(EXE) bash --init-file ./test.sh
 
 profile:
+	sudo sysctl kernel.perf_event_paranoid=-1
 	LDFLAGS="-g" CFLAGS="-g" make $(EXE)
-	perf record -g --call-graph dwarf $(EXE)
+	perf record -g --call-graph dwarf $(EXE) -a ~/Videos/bgs/girl.gif
+	sudo sysctl kernel.perf_event_paranoid=0
 
 clean:
 	rm -rf $(BUILD_DIR)

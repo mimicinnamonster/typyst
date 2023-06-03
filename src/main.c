@@ -87,8 +87,10 @@ resize(int width, int height)
 	}
 
 	//SDL_PIXELFORMAT_BGRA32
-	win.txt = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
-	SDL_SetTextureBlendMode(win.txt, SDL_BLENDMODE_BLEND);
+	win.txt_glyphs = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
+	win.txt_background = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
+	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
+	SDL_SetTextureBlendMode(win.txt_background, SDL_BLENDMODE_BLEND);
 
 	win.glyphs = reallocarray(win.glyphs, cols*rows, sizeof(Glyph));
 
@@ -218,7 +220,8 @@ loadfont(Font *f, FcPattern *pattern)
 	return 0;
 }
 
-FcPattern *createfontpattern(const char *fontstr) {
+FcPattern *createfontpattern(const char *fontstr)
+{
 	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);
 	return pattern;
 }
@@ -505,15 +508,14 @@ drawglyph(Glyph base, int x, int y)
 	win.glyphs[id] = base;
 }
 
-void
+int
 render_glyphs()
 {
 	if (win.drawing || !win.updated)
-		return;
+		return 0;
 
-	fps();
-
-	SDL_SetRenderTarget(win.rnd, win.txt);
+	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+	SDL_RenderClear(win.rnd);
 
 	for (int id = cols*rows-1; id >= 0; id--) {
 		Glyph g = win.glyphs[id];
@@ -549,14 +551,20 @@ render_glyphs()
 		*/
 
 		// clear
-		SDL_SetRenderDrawColor(win.rnd, bg.r, bg.g, bg.b, 255*alpha);
-		SDL_RenderFillRect(win.rnd, &txt_rect);
-		fs->geo.verts[no+0].tex_coord = (SDL_FPoint){0, 0};
-		fs->geo.verts[no+1].tex_coord = (SDL_FPoint){0, 0};
-		fs->geo.verts[no+2].tex_coord = (SDL_FPoint){0, 0};
-		fs->geo.verts[no+3].tex_coord = (SDL_FPoint){0, 0};
-		fs->geo.verts[no+4].tex_coord = (SDL_FPoint){0, 0};
-		fs->geo.verts[no+5].tex_coord = (SDL_FPoint){0, 0};
+		if (bg.r > 0 && bg.g > 0 && bg.b > 0) {
+			SDL_SetRenderDrawColor(win.rnd, bg.r, bg.g, bg.b, 255);
+			SDL_RenderFillRect(win.rnd, &txt_rect);
+		}
+
+		for (int i=0; i<dc.fontsetlen; i++) {
+			FontSet *fs = &dc.fontsets[i];
+			fs->geo.verts[no+0].tex_coord = (SDL_FPoint){0, 0};
+			fs->geo.verts[no+1].tex_coord = (SDL_FPoint){0, 0};
+			fs->geo.verts[no+2].tex_coord = (SDL_FPoint){0, 0};
+			fs->geo.verts[no+3].tex_coord = (SDL_FPoint){0, 0};
+			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){0, 0};
+			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){0, 0};
+		}
 
 		if (!g.u)
 			continue;
@@ -670,54 +678,72 @@ render_glyphs()
 		}
 	}
 
-	SDL_SetRenderTarget(win.rnd, 0);
-}
-
-void
-render_animation()
-{
-	if (!opt_anim)
-		return;
-
-	if (!animate())
-		return;
-
-	win.updated = 1;
-
-	if (anim.curr >= tx_anim_len) {
-		tx_anim_len = anim.curr+1;
-		tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
-		tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
-	}
-
-	int frame = tx_anim_len-1;
-	if (tx_anim_len > anim.curr)
-		frame = anim.curr;
-	if (frame > 0)
-		SDL_RenderCopy(win.rnd, tx_anim[frame], 0, 0);
-}
-
-
-void
-render()
-{
-	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255);
-	SDL_RenderClear(win.rnd);
-
-	render_animation();
-	render_glyphs();
-
 	int c = 6 * cols * rows;
-
-	SDL_RenderCopy(win.rnd, win.txt, 0, 0);
-
 	for (int dci=0; dci<dc.fontsetlen; dci++) {
 		FontSet *fs = &dc.fontsets[dci];
 		if (fs->atlas)
 			SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
 	}
 
-	SDL_RenderPresent(win.rnd);
+	win.updated = 0;
+	return 1;
+}
+
+int
+render_animation()
+{
+	if (!opt_anim)
+		return 0;
+
+	int frame = tx_anim_len-1;
+
+	if (animate()) {
+		if (anim.curr >= tx_anim_len) {
+			tx_anim_len = anim.curr+1;
+			tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
+			tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
+		}
+
+		if (tx_anim_len > anim.curr) {
+			frame = anim.curr;
+		}
+	}
+
+	if (tx_anim_len > 0) {
+		SDL_SetRenderTarget(win.rnd, 0/*win.txt_background*/);
+
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
+		SDL_RenderFillRect(win.rnd, 0);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+void
+render()
+{
+	fps();
+
+	int anim = render_animation();
+
+	if (opt_anim && anim){
+		SDL_SetRenderTarget(win.rnd, win.txt_glyphs);
+	}
+
+	int glyp = render_glyphs();
+
+	if (glyp || anim) {
+		if (anim) {
+			SDL_SetRenderTarget(win.rnd, 0);
+			SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
+			SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
+		}
+
+		SDL_RenderPresent(win.rnd);
+	}
 }
 
 void
@@ -747,7 +773,6 @@ settitle(char *p)
 		snprintf(title, 100, "typyst: %s", p);
 		SDL_SetWindowTitle(win.wnd, title);
 	}
-
 }
 
 int
@@ -840,7 +865,6 @@ kmap(SDL_KeyboardEvent *ev)
 void
 handle_keypress(SDL_Event *ev)
 {
-
 	if (IS_SET(MODE_KBDLOCK))
 		return;
 
@@ -919,7 +943,6 @@ handle_keypress(SDL_Event *ev)
 		}
 	}
 
-
 	#ifdef DEBUG
 	printf("sending %d %d %d %d print:%d, ctrl: %d, shift: %d, alt: %d\n",
 		buf[0], buf[1], buf[2], buf[3],
@@ -979,7 +1002,7 @@ read_events()
 void
 read_tty() {
 	fd_set rfd;
-	static struct timespec pSelectTimeout = { .tv_nsec = 10e8/60 };
+	static struct timespec pSelectTimeout = { .tv_nsec = 10e8/30 };
 
 	FD_ZERO(&rfd);
 	FD_SET(win.ttyfd, &rfd);
@@ -1009,8 +1032,8 @@ init_geometry(Geometry *geo) {
 	for (int y=0; y<rows; y++) {
 		for (int x=0; x<cols; x++) {
 			int no = 6 * (cols * y + x);
-			float x1 = ((float)x/cols) * win.w;
-			float y1 = ((float)y/rows) * win.h;
+			float x1 = win.cw * x;
+			float y1 = win.ch * y;
 			float x2 = x1 + win.cw;
 			float y2 = y1 + win.ch;
 			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0}, {0, 0}};
@@ -1061,6 +1084,25 @@ fps()
 	}
 }
 
+void
+randombullshitgo() {
+	win.drawing = 1;
+			unsigned char r = rand() % 255;
+			unsigned char g = rand() % 255;
+			unsigned char b = rand() % 255;
+			unsigned char c = (rand() % (127-32)) + 32;
+			Glyph gl = {.u=c, .fg=TRUECOLOR(r,g,b)};
+
+	for (int x=0; x<cols; x++) {
+		for (int y=0; y<rows; y++) {
+			drawglyph(gl, x, y);
+		}
+	}
+
+	win.drawing = 0;
+	win.updated = 1;
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1093,6 +1135,7 @@ main(int argc, char *argv[])
 
 	while (1) {
 		read_events();
+		//randombullshitgo();
 		read_tty();
 		render();
 	}

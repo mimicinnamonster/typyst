@@ -38,7 +38,8 @@ typedef struct {
 typedef struct {
 	SDL_Window *wnd;
 	SDL_Renderer *rnd;
-	SDL_Texture *txt;
+	SDL_Texture *txt_glyphs;
+	SDL_Texture *txt_background;
 	int drawing;
 	int updated;
 	int w, h; /* window width and height */
