@@ -36,6 +36,7 @@ static char *opt_io	= NULL;
 static char *opt_line	= NULL;
 static char *opt_anim   = NULL;
 static int opt_size	 = 22;
+static int opt_fps = 30;
 
 TermWindow win;
 Animation anim;
@@ -46,6 +47,7 @@ SDL_Texture **tx_anim;
 unsigned int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
+unsigned int lastframe;
 
 void bell()
 {
@@ -725,6 +727,13 @@ render_animation()
 void
 render()
 {
+	unsigned int currframe = SDL_GetTicks();
+	unsigned int dt = currframe - lastframe;
+
+	if (dt < 1000/opt_fps) {
+		return;
+	}
+
 	fps();
 
 	int anim = render_animation();
@@ -744,6 +753,9 @@ render()
 
 		SDL_RenderPresent(win.rnd);
 	}
+
+
+	lastframe = currframe;
 }
 
 void
@@ -1002,7 +1014,8 @@ read_events()
 void
 read_tty() {
 	fd_set rfd;
-	static struct timespec pSelectTimeout = { .tv_nsec = 10e8/30 };
+	struct timespec pSelectTimeout = { .tv_nsec = 0 };
+	pSelectTimeout.tv_nsec = 10e8/opt_fps;
 
 	FD_ZERO(&rfd);
 	FD_SET(win.ttyfd, &rfd);
@@ -1060,7 +1073,6 @@ usage(void)
 	);
 }
 
-void
 fps()
 {
 	unsigned int currtick = SDL_GetTicks();
@@ -1113,13 +1125,19 @@ main(int argc, char *argv[])
 		char *s = EARGF(usage());
 		font = s;
 		break;
+	case 'p': {
+		char *trans = EARGF(usage());
+		opt_fps = atoi(trans);
+		break;
+	}
 	case 'a':
 		opt_anim = EARGF(usage());
 		break;
-	case 't':
+	case 't': {
 		char *trans = EARGF(usage());
 		alpha = strtof(trans, 0);
 		break;
+	}
 	case 'e':
 		if (argc > 0)
 			--argc, ++argv;
