@@ -212,6 +212,8 @@ loadfont(Font *f, FcPattern *pattern)
 
 	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Surface*));
 	assert(f->cache);
+	f->cache_widths = calloc(FONTCACHESIZE, sizeof(int));
+	assert(f->cache_widths);
 
 	return 0;
 }
@@ -521,10 +523,10 @@ render_glyphs()
 		SDL_Color fg, bg;
 		selectglyphcolors(g, &fg, &bg);
 
-		float w = win.tw/cols;
-		float h = win.th/rows;
-		float winx = x * w;
-		float winy = y * h;
+		int w = win.tw/cols;
+		int h = win.th/rows;
+		int winx = x * w;
+		int winy = y * h;
 		int no = 6*id;
 
 		Font *f = selectglyphfont(g);
@@ -538,7 +540,6 @@ render_glyphs()
 		int width = win.cw * charlen;
 
 		SDL_Surface *ftxt = 0;
-
 		SDL_Rect txt_rect = {winx, winy, width, win.ch};
 
 		/*
@@ -548,8 +549,14 @@ render_glyphs()
 		*/
 
 		// clear
-		SDL_SetRenderDrawColor(win.rnd, bg.r, bg.b, bg.g, 255*alpha);
+		SDL_SetRenderDrawColor(win.rnd, bg.r, bg.g, bg.b, 255*alpha);
 		SDL_RenderFillRect(win.rnd, &txt_rect);
+		fs->geo.verts[no+0].tex_coord = (SDL_FPoint){0, 0};
+		fs->geo.verts[no+1].tex_coord = (SDL_FPoint){0, 0};
+		fs->geo.verts[no+2].tex_coord = (SDL_FPoint){0, 0};
+		fs->geo.verts[no+3].tex_coord = (SDL_FPoint){0, 0};
+		fs->geo.verts[no+4].tex_coord = (SDL_FPoint){0, 0};
+		fs->geo.verts[no+5].tex_coord = (SDL_FPoint){0, 0};
 
 		if (!g.u)
 			continue;
@@ -567,10 +574,14 @@ render_glyphs()
 			font_type = 1;
 		}
 
+		SDL_Rect ftxt_rect = txt_rect;
+
 		char text[8] = {0};
 		utf8encode(g.u, text);
 
-		if (!ftxt) {
+		if (ftxt) {
+			ftxt_rect.w = f->cache_widths[g.u];
+		} else {
 			#ifdef DEBUG
 			printf("producing glyph %s %d\n", text, g.u);
 			#endif
@@ -602,6 +613,7 @@ render_glyphs()
 					printf("caching glyph %lc\n", g.u);
 					#endif
 					f->cache[g.u] = ftxt;
+					f->cache_widths[g.u] = fsur->w;
 				}
 
 				if (g.u < FONTATLASSIZE) {
@@ -618,6 +630,7 @@ render_glyphs()
 				}
 			}
 
+			ftxt_rect.w = fsur->w;
 			SDL_FreeSurface(fsur);
 		}
 
@@ -649,7 +662,7 @@ render_glyphs()
 			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
 			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
 		} else {
-			SDL_RenderCopy(win.rnd, ftxt, 0, &txt_rect);
+			SDL_RenderCopy(win.rnd, ftxt, 0, &ftxt_rect);
 		}
 
 		if (g.u >= FONTCACHESIZE) {
@@ -989,8 +1002,6 @@ init_geometry(Geometry *geo) {
 	if (geo->idxs) free(geo->idxs);
 
 	unsigned int c = 6 * cols * rows;
-	float w = win.w / cols;
-	float h = win.h / rows;
 
 	geo->verts = calloc(c, sizeof(SDL_Vertex));
 	geo->idxs = calloc(c, sizeof(int));
@@ -998,16 +1009,16 @@ init_geometry(Geometry *geo) {
 	for (int y=0; y<rows; y++) {
 		for (int x=0; x<cols; x++) {
 			int no = 6 * (cols * y + x);
-			float x1 = x * w;
-			float y1 = y * h;
-			float x2 = x1 + w;
-			float y2 = y1 + h;
-			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0, 0, 0, 0}, {0, 0}};
-			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 0}, {1, 0}};
-			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 0}, {0, 1}};
-			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}, {0, 0, 0, 0}, {0, 1}};
-			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}, {0, 0, 0, 0}, {1, 1}};
-			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}, {0, 0, 0, 0}, {1, 0}};
+			float x1 = ((float)x/cols) * win.w;
+			float y1 = ((float)y/rows) * win.h;
+			float x2 = x1 + win.cw;
+			float y2 = y1 + win.ch;
+			(geo->verts)[no+0] = (SDL_Vertex){{x1, y1}, {0}, {0, 0}};
+			(geo->verts)[no+1] = (SDL_Vertex){{x2, y1}, {0}, {1, 0}};
+			(geo->verts)[no+2] = (SDL_Vertex){{x1, y2}, {0}, {0, 1}};
+			(geo->verts)[no+3] = (SDL_Vertex){{x1, y2}, {0}, {0, 1}};
+			(geo->verts)[no+4] = (SDL_Vertex){{x2, y2}, {0}, {1, 1}};
+			(geo->verts)[no+5] = (SDL_Vertex){{x2, y1}, {0}, {1, 0}};
 			(geo->idxs)[no+0] = no+0;
 			(geo->idxs)[no+1] = no+1;
 			(geo->idxs)[no+2] = no+2;

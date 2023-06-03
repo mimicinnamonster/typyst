@@ -64,6 +64,7 @@ typedef struct {
 	FcCharSet *charset;
 	TTF_Font *ttf;
 	SDL_Texture **cache;
+	int *cache_widths;
 	unsigned char widths[MAXGLYPHS];
 	struct FontSetStruct *fontset;
 } Font;
