@@ -553,7 +553,7 @@ render_glyphs()
 		*/
 
 		// clear
-		if (bg.r > 0 && bg.g > 0 && bg.b > 0) {
+		if (bg.r > 0 || bg.g > 0 || bg.b > 0) {
 			SDL_SetRenderDrawColor(win.rnd, bg.r, bg.g, bg.b, 255);
 			SDL_RenderFillRect(win.rnd, &txt_rect);
 		}
@@ -1029,6 +1029,7 @@ read_tty() {
 		MODBIT(win.mode, 1, MODE_VISIBLE);
 		win.drawing = 1;
 		draw();
+		win.drawing = 0;
 	}
 }
 
