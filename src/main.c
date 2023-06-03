@@ -30,11 +30,11 @@ void loadfontset(FcPattern *pattern);
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE 10000
 
-static char **opt_cmd	= NULL;
-static char *opt_embed  = NULL;
-static char *opt_io	= NULL;
-static char *opt_line	= NULL;
-static char *opt_anim   = NULL;
+static char **opt_cmd	= 0;
+static char *opt_embed  = 0;
+static char *opt_io	= 0;
+static char *opt_line	= 0;
+static char *opt_anim   = 0;
 static int opt_size	 = 22;
 static int opt_fps = 30;
 
@@ -48,6 +48,7 @@ unsigned int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
 unsigned int lastframe;
+SDL_mutex* mutex;
 
 void bell()
 {
@@ -69,8 +70,6 @@ setmode(int set, unsigned int flags)
 void
 resize(int width, int height)
 {
-	if (win.drawing) return;
-
 	win.w = width;
 	win.h = height;
 
@@ -149,7 +148,7 @@ loadcols(void)
 	}
 
 	for (i = 0; i < dc.collen; i++) {
-		loadcolor(i, NULL, &dc.col[i]);
+		loadcolor(i, 0, &dc.col[i]);
 	}
 
 	loaded = 1;
@@ -187,9 +186,9 @@ loadfont(Font *f, FcPattern *pattern)
 
 	FcPattern *duplicate = FcPatternDuplicate(pattern);
 	f->pattern = duplicate;
-	FcConfigSubstitute(NULL, f->pattern, FcMatchPattern);
+	FcConfigSubstitute(0, f->pattern, FcMatchPattern);
 
-	f->match = FcFontMatch(NULL, f->pattern, &result);
+	f->match = FcFontMatch(0, f->pattern, &result);
 
 	FcPatternGetString(f->match, FC_FILE, 0, &filepath);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
@@ -204,7 +203,7 @@ loadfont(Font *f, FcPattern *pattern)
 	// TODO: hinting
 	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
 
-	f->set = NULL;
+	f->set = 0;
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
@@ -513,7 +512,7 @@ drawglyph(Glyph base, int x, int y)
 int
 render_glyphs()
 {
-	if (win.drawing || !win.updated)
+	if (!win.updated)
 		return 0;
 
 	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
@@ -731,11 +730,12 @@ render()
 	unsigned int dt = currframe - lastframe;
 
 	if (dt < 1000/opt_fps) {
-		return;
+		SDL_Delay((1000/opt_fps)-dt);
 	}
 
 	fps();
 
+	SDL_LockMutex(mutex);
 	int anim = render_animation();
 
 	if (opt_anim && anim){
@@ -754,6 +754,7 @@ render()
 		SDL_RenderPresent(win.rnd);
 	}
 
+	SDL_UnlockMutex(mutex);
 
 	lastframe = currframe;
 }
@@ -871,7 +872,7 @@ kmap(SDL_KeyboardEvent *ev)
 		return kp->esc;
 	}
 
-	return NULL;
+	return 0;
 }
 
 void
@@ -990,13 +991,14 @@ handle_textinput(SDL_Event *ev)
 	#endif
 }
 
-void
-read_events()
+int
+read_events(void *data)
 {
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
 	SDL_Event event;
-	while (SDL_PollEvent(&event)) {
+	while (SDL_WaitEvent(&event)) {
+		SDL_LockMutex(mutex);
 		switch(event.type) {
 			case SDL_TEXTINPUT:
 				handle_textinput(&event);
@@ -1008,28 +1010,32 @@ read_events()
 				handle_window(&event);
 				break;
 		}
+		SDL_UnlockMutex(mutex);
 	}
 }
 
-void
-read_tty() {
+int
+read_tty(void *data) {
 	fd_set rfd;
-	struct timespec pSelectTimeout = { .tv_nsec = 0 };
-	pSelectTimeout.tv_nsec = 10e8/opt_fps;
 
-	FD_ZERO(&rfd);
-	FD_SET(win.ttyfd, &rfd);
+	while (1) {
+		FD_ZERO(&rfd);
+		FD_SET(win.ttyfd, &rfd);
 
-	if (pselect(win.ttyfd+1, &rfd, NULL, NULL, &pSelectTimeout, NULL) < 0) {
-		if (errno == EINTR) return;
-		die("select failed: %s\n", strerror(errno));
-	}
-	if (FD_ISSET(win.ttyfd, &rfd)) {
-		ttyread();
-		MODBIT(win.mode, 1, MODE_VISIBLE);
-		win.drawing = 1;
-		draw();
-		win.drawing = 0;
+		if (pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0) < 0) {
+			if (errno == EINTR) return;
+			die("select failed: %s\n", strerror(errno));
+		}
+
+		if (FD_ISSET(win.ttyfd, &rfd)) {
+			SDL_LockMutex(mutex);
+
+			ttyread();
+			MODBIT(win.mode, 1, MODE_VISIBLE);
+			draw();
+
+			SDL_UnlockMutex(mutex);
+		}
 	}
 }
 
@@ -1152,10 +1158,12 @@ main(int argc, char *argv[])
 
 	init();
 
+	mutex = SDL_CreateMutex();
+	SDL_Thread* events_thread = SDL_CreateThread(read_events, "read_events", 0);
+	SDL_Thread* tty_thread = SDL_CreateThread(read_tty, "read_tty", 0);
+
 	while (1) {
-		read_events();
 		//randombullshitgo();
-		read_tty();
 		render();
 	}
 
