@@ -670,6 +670,7 @@ render_glyphs()
 			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
 			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
 		} else {
+			SDL_SetTextureColorMod(ftxt, fg.r, fg.g, fg.b);
 			SDL_RenderCopy(win.rnd, ftxt, 0, &ftxt_rect);
 		}
 
