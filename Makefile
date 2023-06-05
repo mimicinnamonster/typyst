@@ -1,5 +1,6 @@
 .POSIX:
 
+CC = gcc
 NAME = typyst
 VERSION = 0.1
 INSTALL_SHARE_DIR = ~/.local/share
@@ -14,7 +15,7 @@ INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
 LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg 
 EXE = $(BUILD_DIR)/$(NAME)
 
-BASE_CFLAGS =
+BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -std=c11 -pedantic -Werror
 BASE_LDFLAGS =
 
 DEBUG_CFLAGS = -Wall -Wextra -fsanitize=address -fsanitize=undefined # -fanalyzer # -fprofile-arcs -ftest-coverage
@@ -23,8 +24,8 @@ DEBUG_LDFLAGS = -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-
 RELEASE_CFLAGS = -O3 -s
 RELEASE_LDFLAGS = -O3 -s
 
-CC_CFLAGS = $(INCS) $(BASE_CFLAGS) $(CFLAGS)
-CC_LDFLAGS = $(LIBS) $(BASE_LDFLAGS) $(LDFLAGS)
+CC_CFLAGS = $(BASE_CFLAGS) $(CFLAGS) $(INCS)
+CC_LDFLAGS = $(BASE_LDFLAGS) $(LDFLAGS) $(LIBS)
 
 all: options $(EXE)
 
@@ -50,9 +51,9 @@ test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
 debug: clean
-	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make $(EXE)
+	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS) $(CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make $(EXE)
 	#$(EXE) -a ~/Videos/bgs/girl.gif bash --init-file ./test.sh
-	$(EXE) bash --init-file ./test.sh
+	#$(EXE) bash --init-file ./test.sh
 
 profile:
 	sudo sysctl kernel.perf_event_paranoid=-1

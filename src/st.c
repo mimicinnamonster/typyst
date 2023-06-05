@@ -1,3 +1,5 @@
+#define _XOPEN_SOURCE
+
 /* See LICENSE for license details. */
 #include <ctype.h>
 #include <errno.h>
@@ -20,6 +22,7 @@
 #include "st.h"
 #include "main.h"
 
+
 #if   defined(__linux)
  #include <pty.h>
 #elif defined(__OpenBSD__) || defined(__NetBSD__) || defined(__APPLE__)
@@ -38,7 +41,7 @@
 
 /* macros */
 #define IS_SET(flag)		((term.mode & (flag)) != 0)
-#define ISCONTROLC0(c)		(BETWEEN(c, 0, 0x1f) || (c) == 0x7f)
+#define ISCONTROLC0(c)		((c<=0x1f) || (c) == 0x7f)
 #define ISCONTROLC1(c)		(BETWEEN(c, 0x80, 0x9f))
 #define ISCONTROL(c)		(ISCONTROLC0(c) || ISCONTROLC1(c))
 #define ISDELIM(u)		(u && wcschr(worddelimiters, u))
@@ -189,8 +192,10 @@ static Rune utf8decodebyte(char, size_t *);
 static char utf8encodebyte(Rune, size_t);
 static size_t utf8validate(Rune *, size_t);
 
+/*
 static char *base64dec(const char *);
 static char base64dec_getc(const char **);
+*/
 
 static ssize_t xwrite(int, const char *, size_t);
 
@@ -325,6 +330,7 @@ utf8validate(Rune *u, size_t i)
 	return i;
 }
 
+/*
 static const char base64_digits[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 0, 0, 0,
@@ -339,13 +345,15 @@ static const char base64_digits[] = {
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 };
+*/
 
+/*
 char
 base64dec_getc(const char **src)
 {
 	while (**src && !isprint(**src))
 		(*src)++;
-	return **src ? *((*src)++) : '=';  /* emulate padding if string ends */
+	return **src ? *((*src)++) : '=';  // emulate padding if string ends
 }
 
 char *
@@ -363,7 +371,7 @@ base64dec(const char *src)
 		int c = base64_digits[(unsigned char) base64dec_getc(&src)];
 		int d = base64_digits[(unsigned char) base64dec_getc(&src)];
 
-		/* invalid input. 'a' can be -1, e.g. if src is "\n" (c-str) */
+		// invalid input. 'a' can be -1, e.g. if src is "\n" (c-str)
 		if (a == -1 || b == -1)
 			break;
 
@@ -378,6 +386,7 @@ base64dec(const char *src)
 	*dst = '\0';
 	return result;
 }
+*/
 
 int
 tlinelen(int y)
@@ -458,7 +467,7 @@ execsh(char *cmd, char **args)
 }
 
 void
-sigchld(int a)
+sigchld(/*int a*/)
 {
 	int stat;
 	pid_t p;
@@ -576,6 +585,7 @@ ttyread(void)
 		_exit(0);
 	case -1:
 		die("couldn't read from shell: %s\n", strerror(errno));
+		__attribute__ ((fallthrough));
 	default:
 		buflen += ret;
 		written = twrite(buf, buflen, 0);
@@ -619,7 +629,7 @@ void
 ttywriteraw(const char *s, size_t n)
 {
 	fd_set wfd, rfd;
-	ssize_t r;
+	ssize_t r = 0;
 	size_t lim = 256;
 
 	/*
@@ -646,9 +656,12 @@ ttywriteraw(const char *s, size_t n)
 			 * default of 256. This seems to be a reasonable value
 			 * for a serial line. Bigger values might clog the I/O.
 			 */
+
+			/* TODO: remove, always false?
+			*/
 			if ((r = write(cmdfd, s, (n < lim)? n : lim)) < 0)
 				goto write_error;
-			if (r < n) {
+			if (r < (ssize_t)n) {
 				/*
 				 * We weren't able to write out everything.
 				 * This means the buffer is getting full
@@ -757,7 +770,7 @@ tcursor(int mode)
 void
 treset(void)
 {
-	uint i;
+	int i;
 
 	term.c = (TCursor){{
 		.mode = ATTR_NULL,
@@ -837,6 +850,7 @@ tscrollup(int orig, int n)
 	}
 }
 
+void
 tnewline(int first_col)
 {
 	int y = term.c.y;
@@ -1033,7 +1047,7 @@ tdefcolor(const int *attr, int *npar, int l)
 		g = attr[*npar + 3];
 		b = attr[*npar + 4];
 		*npar += 4;
-		if (!BETWEEN(r, 0, 255) || !BETWEEN(g, 0, 255) || !BETWEEN(b, 0, 255))
+		if (r > 255 || g>255 || b>255)
 			fprintf(stderr, "erresc: bad rgb color (%u,%u,%u)\n",
 				r, g, b);
 		else
@@ -1546,7 +1560,7 @@ csireset(void)
 void
 strhandle(void)
 {
-	char *p = NULL, *dec;
+	char *p = NULL;//, *dec;
 	int j, narg, par;
 
 	term.esc &= ~(ESC_STR_END|ESC_STR);
@@ -1560,6 +1574,7 @@ strhandle(void)
 			if (narg > 1) {
 				settitle(strescseq.args[1]);
 			}
+			__attribute__((fallthrough));
 		case 1:
 			if (narg > 1)
 				settitle(strescseq.args[1]);
@@ -1572,7 +1587,7 @@ strhandle(void)
 			if (narg < 3)
 				break;
 			p = strescseq.args[2];
-			/* FALLTHROUGH */
+			__attribute__((fallthrough));
 		case 104: /* color reset, here p = NULL */
 			j = (narg > 1) ? atoi(strescseq.args[1]) : -1;
 			if (setcolorname(j, p)) {
@@ -1662,7 +1677,7 @@ strreset(void)
 }
 
 void
-sendbreak(const Arg *arg)
+sendbreak(/*const Arg *arg*/)
 {
 	if (tcsendbreak(cmdfd, 0))
 		perror("Error sending break");
@@ -1679,13 +1694,13 @@ tprinter(char *s, size_t len)
 }
 
 void
-toggleprinter(const Arg *arg)
+toggleprinter(/*const Arg *arg*/)
 {
 	term.mode ^= MODE_PRINT;
 }
 
 void
-printscreen(const Arg *arg)
+printscreen(/*const Arg *arg*/)
 {
 	tdump();
 }
@@ -1717,7 +1732,7 @@ tdump(void)
 void
 tputtab(int n)
 {
-	uint x = term.c.x;
+	int x = term.c.x;
 
 	if (n > 0) {
 		while (x < term.col && n--)
@@ -1978,7 +1993,7 @@ tputc(Rune u)
 {
 	char c[UTF_SIZ];
 	int control;
-	int width, len;
+	int width=0, len;
 	Glyph *gp;
 
 	control = ISCONTROL(u);
@@ -2251,7 +2266,7 @@ drawregion(int x1, int y1, int x2, int y2)
 void
 draw(void)
 {
-	int cx = term.c.x, ocx = term.ocx, ocy = term.ocy;
+	int cx = term.c.x/*, ocx = term.ocx, ocy = term.ocy*/;
 
 	if (!startdraw())
 		return;

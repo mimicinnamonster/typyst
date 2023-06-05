@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -13,8 +14,12 @@
 #include <unistd.h>
 #endif
 
+#ifndef MIN
 #define MIN(A, B) ((A) < (B) ? (A) : (B))
+#endif
+#ifndef MAX
 #define MAX(A, B) ((A) > (B) ? (A) : (B))
+#endif
 
 typedef struct Entry {
     uint16_t length;
@@ -33,7 +38,7 @@ read_num(int fd)
 {
     uint8_t bytes[2];
 
-    read(fd, bytes, 2);
+    assert(read(fd, bytes, 2));
     return bytes[0] + (((uint16_t) bytes[1]) << 8);
 }
 
@@ -55,13 +60,13 @@ gd_open_gif(const char *fname)
     setmode(fd, O_BINARY);
 #endif
     /* Header */
-    read(fd, sigver, 3);
+    assert(read(fd, sigver, 3));
     if (memcmp(sigver, "GIF", 3) != 0) {
         fprintf(stderr, "invalid signature\n");
         goto fail;
     }
     /* Version */
-    read(fd, sigver, 3);
+    assert(read(fd, sigver, 3));
     if (memcmp(sigver, "89a", 3) != 0) {
         fprintf(stderr, "invalid version\n");
         goto fail;
@@ -70,7 +75,7 @@ gd_open_gif(const char *fname)
     width  = read_num(fd);
     height = read_num(fd);
     /* FDSZ */
-    read(fd, &fdsz, 1);
+    assert(read(fd, &fdsz, 1));
     /* Presence of GCT */
     if (!(fdsz & 0x80)) {
         fprintf(stderr, "no global color table\n");
@@ -82,9 +87,9 @@ gd_open_gif(const char *fname)
     /* GCT Size */
     gct_sz = 1 << ((fdsz & 0x07) + 1);
     /* Background Color Index */
-    read(fd, &bgidx, 1);
+    assert(read(fd, &bgidx, 1));
     /* Aspect Ratio */
-    read(fd, &aspect, 1);
+    assert(read(fd, &aspect, 1));
     /* Create gd_GIF Structure. */
     gif = calloc(1, sizeof(*gif) + 4 * width * height);
     if (!gif) goto fail;
@@ -94,7 +99,7 @@ gd_open_gif(const char *fname)
     gif->depth  = depth;
     /* Read GCT */
     gif->gct.size = gct_sz;
-    read(fd, gif->gct.colors, 3 * gif->gct.size);
+    assert(read(fd, gif->gct.colors, 3 * gif->gct.size));
     gif->palette = &gif->gct;
     gif->bgindex = bgidx;
     gif->canvas = (uint8_t *) &gif[1];
@@ -119,7 +124,7 @@ discard_sub_blocks(gd_GIF *gif)
     uint8_t size;
 
     do {
-        read(gif->fd, &size, 1);
+        assert(read(gif->fd, &size, 1));
         lseek(gif->fd, size, SEEK_CUR);
     } while (size);
 }
@@ -136,10 +141,10 @@ read_plain_text_ext(gd_GIF *gif)
         ty = read_num(gif->fd);
         tw = read_num(gif->fd);
         th = read_num(gif->fd);
-        read(gif->fd, &cw, 1);
-        read(gif->fd, &ch, 1);
-        read(gif->fd, &fg, 1);
-        read(gif->fd, &bg, 1);
+        assert(read(gif->fd, &cw, 1));
+        assert(read(gif->fd, &ch, 1));
+        assert(read(gif->fd, &fg, 1));
+        assert(read(gif->fd, &bg, 1));
         sub_block = lseek(gif->fd, 0, SEEK_CUR);
         gif->plain_text(gif, tx, ty, tw, th, cw, ch, fg, bg);
         lseek(gif->fd, sub_block, SEEK_SET);
@@ -158,12 +163,12 @@ read_graphic_control_ext(gd_GIF *gif)
 
     /* Discard block size (always 0x04). */
     lseek(gif->fd, 1, SEEK_CUR);
-    read(gif->fd, &rdit, 1);
+    assert(read(gif->fd, &rdit, 1));
     gif->gce.disposal = (rdit >> 2) & 3;
     gif->gce.input = rdit & 2;
     gif->gce.transparency = rdit & 1;
     gif->gce.delay = read_num(gif->fd);
-    read(gif->fd, &gif->gce.tindex, 1);
+    assert(read(gif->fd, &gif->gce.tindex, 1));
     /* Skip block terminator. */
     lseek(gif->fd, 1, SEEK_CUR);
 }
@@ -189,9 +194,9 @@ read_application_ext(gd_GIF *gif)
     /* Discard block size (always 0x0B). */
     lseek(gif->fd, 1, SEEK_CUR);
     /* Application Identifier. */
-    read(gif->fd, app_id, 8);
+    assert(read(gif->fd, app_id, 8));
     /* Application Authentication Code. */
-    read(gif->fd, app_auth_code, 3);
+    assert(read(gif->fd, app_auth_code, 3));
     if (!strncmp(app_id, "NETSCAPE", sizeof(app_id))) {
         /* Discard block size (0x03) and constant byte (0x01). */
         lseek(gif->fd, 2, SEEK_CUR);
@@ -213,7 +218,7 @@ read_ext(gd_GIF *gif)
 {
     uint8_t label;
 
-    read(gif->fd, &label, 1);
+    assert(read(gif->fd, &label, 1));
     switch (label) {
     case 0x01:
         read_plain_text_ext(gif);
@@ -284,11 +289,11 @@ get_key(gd_GIF *gif, int key_size, uint8_t *sub_len, uint8_t *shift, uint8_t *by
         if (rpad == 0) {
             /* Update byte. */
             if (*sub_len == 0) {
-                read(gif->fd, sub_len, 1); /* Must be nonzero! */
+                assert(read(gif->fd, sub_len, 1)); /* Must be nonzero! */
                 if (*sub_len == 0)
                     return 0x1000;
             }
-            read(gif->fd, byte, 1);
+            assert(read(gif->fd, byte, 1));
             (*sub_len)--;
         }
         frag_size = MIN(key_size - bits_read, 8 - rpad);
@@ -328,15 +333,15 @@ static int
 read_image_data(gd_GIF *gif, int interlace)
 {
     uint8_t sub_len, shift, byte;
-    int init_key_size, key_size, table_is_full;
-    int frm_off, frm_size, str_len, i, p, x, y;
+    int init_key_size, key_size, table_is_full = 0;
+    int frm_off, frm_size, str_len=0, i, p, x, y;
     uint16_t key, clear, stop;
     int ret;
     Table *table;
-    Entry entry;
+    Entry entry ={0};
     off_t start, end;
 
-    read(gif->fd, &byte, 1);
+    assert(read(gif->fd, &byte, 1));
     key_size = (int) byte;
     start = lseek(gif->fd, 0, SEEK_CUR);
     discard_sub_blocks(gif);
@@ -392,7 +397,7 @@ read_image_data(gd_GIF *gif, int interlace)
     }
     free(table);
     if (key == stop)
-        read(gif->fd, &sub_len, 1); /* Must be zero! */
+        assert(read(gif->fd, &sub_len, 1)); /* Must be zero! */
     lseek(gif->fd, end, SEEK_SET);
     return 0;
 }
@@ -410,14 +415,14 @@ read_image(gd_GIF *gif)
     gif->fy = read_num(gif->fd);
     gif->fw = read_num(gif->fd);
     gif->fh = read_num(gif->fd);
-    read(gif->fd, &fisrz, 1);
+    assert(read(gif->fd, &fisrz, 1));
     interlace = fisrz & 0x40;
     /* Ignore Sort Flag. */
     /* Local Color Table? */
     if (fisrz & 0x80) {
         /* Read LCT */
         gif->lct.size = 1 << ((fisrz & 0x07) + 1);
-        read(gif->fd, gif->lct.colors, 3 * gif->lct.size);
+        assert(read(gif->fd, gif->lct.colors, 3 * gif->lct.size));
         gif->palette = &gif->lct;
     } else
         gif->palette = &gif->gct;
@@ -472,14 +477,14 @@ gd_get_frame(gd_GIF *gif)
     char sep;
 
     dispose(gif);
-    read(gif->fd, &sep, 1);
+    assert(read(gif->fd, &sep, 1));
     while (sep != ',') {
         if (sep == ';')
             return 0;
         if (sep == '!')
             read_ext(gif);
         else return -1;
-        read(gif->fd, &sep, 1);
+        assert(read(gif->fd, &sep, 1));
     }
     if (read_image(gif) == -1)
         return -1;

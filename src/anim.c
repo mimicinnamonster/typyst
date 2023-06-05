@@ -33,7 +33,7 @@ decodepixels()
 				if (gif->gce.transparency && gd_is_bgcolor(gif, color))
 					alpha = 0;
 				pixel = SDL_MapRGBA(tmpsrf->format, color[0], color[1], color[2], alpha);
-				addr = tmpsrf->pixels + (i * tmpsrf->pitch + j * sizeof(pixel));
+				addr = (char *)tmpsrf->pixels + (i * tmpsrf->pitch + j * sizeof(pixel));
 				memcpy(addr, &pixel, sizeof(pixel));
 				color += 3;
 		}
@@ -69,7 +69,7 @@ decodeframe()
 
 static
 int
-decodeanimation(char *filename)
+decodeanimation()
 {
 	#ifdef DEBUG
 	printf("starting animation decoding thread\n");
@@ -84,7 +84,10 @@ decodeanimation(char *filename)
 	printf("finishing animation decoding thread\n");
 	#endif
 
+	return 0;
 }
+
+int firstRendered = 0;
 
 int
 animate()
@@ -95,7 +98,6 @@ animate()
 	// frame not loaded yet
 	if (!anim.duration[anim.curr]) return 0;
 
-	static firstRendered = 0;
 	if (!firstRendered) {
 		firstRendered = 1;
 		last = now;

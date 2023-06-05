@@ -1,9 +1,8 @@
-#include <malloc.h>
+#include <stdlib.h>
 #include <errno.h>
 #include <locale.h>
 #include <time.h>
 #include <sys/select.h>
-#include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -26,17 +25,17 @@ void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
 void loadfontset(FcPattern *pattern);
+void init_geometry(Geometry *geo);
+void fps();
 
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE 10000
 
 static char **opt_cmd	= 0;
-static char *opt_embed  = 0;
 static char *opt_io	= 0;
 static char *opt_line	= 0;
 static char *opt_anim   = 0;
-static int opt_size	 = 22;
-static int opt_fps = 30;
+static unsigned int opt_fps = 30;
 
 TermWindow win;
 Animation anim;
@@ -44,11 +43,13 @@ DrawingContext dc;
 double usedfontsize;
 SDL_Texture* tx_bg;
 SDL_Texture **tx_anim;
-unsigned int tx_anim_len;
+int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
 unsigned int lastframe;
 SDL_mutex* mutex;
+
+#define IS_SET(flag)	((win.mode & (flag)) != 0)
 
 void bell()
 {
@@ -58,9 +59,9 @@ void bell()
 void
 setmode(int set, unsigned int flags)
 {
-	int mode = win.mode;
 	MODBIT(win.mode, set, flags);
 	/* TODO: redraw
+	int mode = win.mode;
 	if ((win.mode & MODE_REVERSE) != (mode & MODE_REVERSE))
 		redraw();
 	*/
@@ -93,7 +94,7 @@ resize(int width, int height)
 	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
 	SDL_SetTextureBlendMode(win.txt_background, SDL_BLENDMODE_BLEND);
 
-	win.glyphs = reallocarray(win.glyphs, cols*rows, sizeof(Glyph));
+	win.glyphs = realloc(win.glyphs, cols*rows*sizeof(Glyph));
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -140,7 +141,6 @@ loadcols(void)
 {
 	int i;
 	static int loaded;
-	Color *cp;
 
 	if (!loaded) {
 		dc.collen = MAX(LEN(colorname), 256);
@@ -177,7 +177,7 @@ setcolorname(int x, const char *name)
 int
 loadfont(Font *f, FcPattern *pattern)
 {
-	unsigned char *filepath;
+	char *filepath;
 	FcResult result;
 
 	// TODO: slanted bolded
@@ -190,7 +190,7 @@ loadfont(Font *f, FcPattern *pattern)
 
 	f->match = FcFontMatch(0, f->pattern, &result);
 
-	FcPatternGetString(f->match, FC_FILE, 0, &filepath);
+	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
 
 	#ifdef DEBUG
@@ -230,7 +230,7 @@ FcPattern *createfontpattern(const char *fontstr)
 void
 loadfontset(FcPattern *pattern)
 {
-	dc.fontsets = reallocarray(dc.fontsets, ++dc.fontsetlen, sizeof(FontSet));
+	dc.fontsets = realloc(dc.fontsets, ++dc.fontsetlen * sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
 	init_geometry(&(fontset->geo));
@@ -270,7 +270,7 @@ loadfontset(FcPattern *pattern)
 	assert(!loadfont(&fontset->bfont, pattern));;
 
 	// we reallocated, so we need updated all backreferences to fontsets inside fonts
-	for (size_t i=0; i<dc.fontsetlen; i++) {
+	for (int i=0; i<dc.fontsetlen; i++) {
 		struct FontSetStruct *fs = &dc.fontsets[i];
 		fs->font.fontset = fs;
 		fs->bfont.fontset = fs;
@@ -388,7 +388,7 @@ selectglyphfont(Glyph base)
 		assert(fontset->atlas);
 		SDL_SetTextureBlendMode(fontset->atlas, SDL_BLENDMODE_BLEND);
 		#ifdef DEBUG
-		printf("creating atlas for fontset %p: %d x %d\n", fontset, w, h);
+		printf("creating atlas for fontset %p: %d x %d\n", (void *)fontset, w, h);
 		#endif
 	}
 
@@ -400,7 +400,7 @@ selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 {
 	RenderColor *fg, *bg;
 	RenderColor *temp;
-	RenderColor colfg, colbg, truebg;
+	RenderColor colfg, colbg;
 
 	if (IS_TRUECOL(base.fg)) {
 		colfg.alpha = 0xff;
@@ -423,7 +423,7 @@ selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 	}
 
 	/* Change basic system colors [0-7] to bright system colors [8-15] */
-	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && BETWEEN(base.fg, 0, 7))
+	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && base.fg <= 7)
 		fg = &dc.col[base.fg + 8];
 
 	if (IS_SET(MODE_REVERSE)) {
@@ -482,7 +482,6 @@ selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 int
 getglyphwidth(Rune u)
 {
-	int width = 0;
 	Font *f = selectglyphfont((Glyph){ .u = u });
 
 	if (f->widths[u] != 0)
@@ -542,7 +541,7 @@ render_glyphs()
 		int charlen = ((g.mode & ATTR_WIDE) ? 2 : 1);
 		int width = win.cw * charlen;
 
-		SDL_Surface *ftxt = 0;
+		SDL_Texture *ftxt = 0;
 		SDL_Rect txt_rect = {winx, winy, width, win.ch};
 
 		/*
@@ -696,17 +695,11 @@ render_animation()
 	if (!opt_anim)
 		return 0;
 
-	int frame = tx_anim_len-1;
-
 	if (animate()) {
 		if (anim.curr >= tx_anim_len) {
 			tx_anim_len = anim.curr+1;
 			tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
 			tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
-		}
-
-		if (tx_anim_len > anim.curr) {
-			frame = anim.curr;
 		}
 	}
 
@@ -887,7 +880,7 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
-	char *kmapbuf = kmap(ev);
+	char *kmapbuf = kmap((SDL_KeyboardEvent *)ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
 		//printf("sending %d %d %d %d\n", kmapbuf[0], kmapbuf[1], kmapbuf[2], kmapbuf[3]);
@@ -898,7 +891,7 @@ handle_keypress(SDL_Event *ev)
 	}
 
 	unsigned char keysz = 1;
-	unsigned char buf[8] = { ev->key.keysym.sym };
+	char buf[8] = { ev->key.keysym.sym };
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
@@ -911,18 +904,19 @@ handle_keypress(SDL_Event *ev)
 
 	if (isfn) {
 		switch (ev->key.keysym.scancode) {
-			case SDL_SCANCODE_F1: memcpy(buf, "\EOP", keysz = 3); break;
-			case SDL_SCANCODE_F2: memcpy(buf, "\EOQ", keysz = 3); break;
-			case SDL_SCANCODE_F3: memcpy(buf, "\EOR", keysz = 3); break;
-			case SDL_SCANCODE_F4: memcpy(buf, "\EOS", keysz = 3); break;
-			case SDL_SCANCODE_F5: memcpy(buf, "\E[15~", keysz = 5); break;
-			case SDL_SCANCODE_F6: memcpy(buf, "\E[17~", keysz = 5); break;
-			case SDL_SCANCODE_F7: memcpy(buf, "\E[18~", keysz = 5); break;
-			case SDL_SCANCODE_F8: memcpy(buf, "\E[19~", keysz = 5); break;
-			case SDL_SCANCODE_F9: memcpy(buf, "\E[20~", keysz = 5); break;
-			case SDL_SCANCODE_F10: memcpy(buf, "\E[21~", keysz = 5); break;
-			case SDL_SCANCODE_F11: memcpy(buf, "\E[23~", keysz = 5); break;
-			case SDL_SCANCODE_F12: memcpy(buf, "\E[24~", keysz = 5); break;
+			case SDL_SCANCODE_F1: memcpy(buf, "\033OP", keysz = 3); break;
+			case SDL_SCANCODE_F2: memcpy(buf, "\033OQ", keysz = 3); break;
+			case SDL_SCANCODE_F3: memcpy(buf, "\033OR", keysz = 3); break;
+			case SDL_SCANCODE_F4: memcpy(buf, "\033OS", keysz = 3); break;
+			case SDL_SCANCODE_F5: memcpy(buf, "\033[15~", keysz = 5); break;
+			case SDL_SCANCODE_F6: memcpy(buf, "\033[17~", keysz = 5); break;
+			case SDL_SCANCODE_F7: memcpy(buf, "\033[18~", keysz = 5); break;
+			case SDL_SCANCODE_F8: memcpy(buf, "\033[19~", keysz = 5); break;
+			case SDL_SCANCODE_F9: memcpy(buf, "\033[20~", keysz = 5); break;
+			case SDL_SCANCODE_F10: memcpy(buf, "\033[21~", keysz = 5); break;
+			case SDL_SCANCODE_F11: memcpy(buf, "\033[23~", keysz = 5); break;
+			case SDL_SCANCODE_F12: memcpy(buf, "\033[24~", keysz = 5); break;
+			default: break;
 		}
 	} else {
 		if (!isprint || (!isspec && !isctrl && !isalt))
@@ -943,7 +937,7 @@ handle_keypress(SDL_Event *ev)
 
 			if (!isctrl && isshift) {
 				#ifdef DEBUG
-				printf("capitalized %d %d\n", buf[0]);
+				printf("capitalized %d\n", buf[0]);
 				#endif
 				buf[0] -= 'a' - 'A';
 			}
@@ -951,7 +945,7 @@ handle_keypress(SDL_Event *ev)
 
 		if (isalt) {
 			buf[1] = buf[0];
-			buf[0] = '\E';
+			buf[0] = '\033';
 			keysz = 2;
 		}
 	}
@@ -962,10 +956,10 @@ handle_keypress(SDL_Event *ev)
 		isprint, isctrl, isshift, isalt);
 	#endif
 
-	ttywrite(buf, keysz, 1);//isfn ?  : isalt ? 2 : 1, 1);
+	ttywrite(buf, keysz, 1);// TODO: isfn ?  : isalt ? 2 : 1, 1);
 }
 
-unsigned char *kb_state;
+const unsigned char * kb_state;
 int kb_state_len;
 
 void
@@ -979,7 +973,7 @@ handle_textinput(SDL_Event *ev)
 
 	int isalt = kb_state[SDL_SCANCODE_LALT];
 
-	unsigned char buf[8] = {isalt ? '\E' : 0};
+	char buf[8] = {isalt ? '\033' : 0};
 	int textlen = strlen(ev->text.text);
 
 	memcpy(buf + (isalt ? 1 : 0), ev->text.text, MIN(textlen, 8 - (isalt ? 1 : 0)));
@@ -992,38 +986,40 @@ handle_textinput(SDL_Event *ev)
 }
 
 int
-read_events(void *data)
+read_events()
 {
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
 	SDL_Event event;
 	while (SDL_WaitEvent(&event)) {
-		SDL_LockMutex(mutex);
-		switch(event.type) {
-			case SDL_TEXTINPUT:
-				handle_textinput(&event);
-				break;
-			case SDL_KEYDOWN:
-				handle_keypress(&event);
-				break;
-			case SDL_WINDOWEVENT:
-				handle_window(&event);
-				break;
+			SDL_LockMutex(mutex);
+			switch(event.type) {
+				case SDL_TEXTINPUT:
+					handle_textinput(&event);
+					break;
+				case SDL_KEYDOWN:
+					handle_keypress(&event);
+					break;
+				case SDL_WINDOWEVENT:
+					handle_window(&event);
+					break;
+			}
+			SDL_UnlockMutex(mutex);
 		}
-		SDL_UnlockMutex(mutex);
+		return 0;
 	}
-}
 
 int
-read_tty(void *data) {
+read_tty() {
 	fd_set rfd;
 
 	while (1) {
+		printf("read_tty\n");
 		FD_ZERO(&rfd);
 		FD_SET(win.ttyfd, &rfd);
 
 		if (pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0) < 0) {
-			if (errno == EINTR) return;
+			if (errno == EINTR) return 0;
 			die("select failed: %s\n", strerror(errno));
 		}
 
@@ -1080,6 +1076,7 @@ usage(void)
 	);
 }
 
+void
 fps()
 {
 	unsigned int currtick = SDL_GetTicks();
@@ -1128,13 +1125,14 @@ main(int argc, char *argv[])
 	setlocale(LC_CTYPE, "UTF-8");
 
 	ARGBEGIN {
-	case 'f':
+	case 'f': {
 		char *s = EARGF(usage());
 		font = s;
 		break;
+	}
 	case 'p': {
 		char *trans = EARGF(usage());
-		opt_fps = atoi(trans);
+		opt_fps = (unsigned int)atoi(trans);
 		break;
 	}
 	case 'a':
@@ -1159,8 +1157,8 @@ main(int argc, char *argv[])
 	init();
 
 	mutex = SDL_CreateMutex();
-	SDL_Thread* events_thread = SDL_CreateThread(read_events, "read_events", 0);
-	SDL_Thread* tty_thread = SDL_CreateThread(read_tty, "read_tty", 0);
+	SDL_CreateThread(read_events, "read_events", 0);
+	SDL_CreateThread(read_tty, "read_tty", 0);
 
 	while (1) {
 		//randombullshitgo();

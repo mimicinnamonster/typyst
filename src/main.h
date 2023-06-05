@@ -21,7 +21,6 @@
 	#define AMASK (0xff00000)
 #endif
 
-#define IS_SET(flag)	((win.mode & (flag)) != 0)
 #define TRUERED(x)		(((x) & 0xff0000) >> 16)
 #define TRUEGREEN(x)	(((x) & 0x00ff00) >> 8)
 #define TRUEBLUE(x)		(((x) & 0x0000ff) >> 0)
@@ -83,7 +82,7 @@ typedef struct FontSetStruct {
 
 typedef struct {
 	RenderColor *col;
-	size_t collen;
+	int collen;
 	FontSet *fontsets;
 	int fontsetlen;
 } DrawingContext;
@@ -140,5 +139,8 @@ void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);
 int getglyphwidth(Rune u);
+
+extern void initanim(char *);
+extern int animate();
 
 #endif
