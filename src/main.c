@@ -27,6 +27,7 @@ int loadfont(Font *, FcPattern *);
 void loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
 void fps();
+int read_events();
 
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE 10000
@@ -46,7 +47,6 @@ SDL_Texture **tx_anim;
 int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
-unsigned int lastframe;
 SDL_mutex* mutex;
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
@@ -720,15 +720,6 @@ render_animation()
 void
 render()
 {
-	unsigned int currframe = SDL_GetTicks();
-	unsigned int dt = currframe - lastframe;
-
-	if (dt < 1000/opt_fps) {
-		SDL_Delay((1000/opt_fps)-dt);
-	}
-
-	fps();
-
 	SDL_LockMutex(mutex);
 	int anim = render_animation();
 
@@ -749,8 +740,6 @@ render()
 	}
 
 	SDL_UnlockMutex(mutex);
-
-	lastframe = SDL_GetTicks();
 }
 
 void
@@ -992,7 +981,7 @@ read_events()
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
 	SDL_Event event;
-	while (SDL_WaitEvent(&event)) {
+	while (SDL_PollEvent(&event)) {
 			SDL_LockMutex(mutex);
 			switch(event.type) {
 				case SDL_TEXTINPUT:
@@ -1015,7 +1004,6 @@ read_tty() {
 	fd_set rfd;
 
 	while (1) {
-		printf("read_tty\n");
 		FD_ZERO(&rfd);
 		FD_SET(win.ttyfd, &rfd);
 
@@ -1158,13 +1146,28 @@ main(int argc, char *argv[])
 	init();
 
 	mutex = SDL_CreateMutex();
-	SDL_CreateThread(read_events, "read_events", 0);
 	SDL_CreateThread(read_tty, "read_tty", 0);
+
+	unsigned int lastframe = 0;
 
 	while (1) {
 		//randombullshitgo();
+		read_events();
+
+		unsigned int currframe = SDL_GetTicks();
+		unsigned int dt = currframe - lastframe;
+
+		if (dt < 1000/opt_fps) {
+			SDL_Delay((1000/opt_fps)-dt);
+		}
+
+		fps();
+
 		render();
+
+		lastframe = SDL_GetTicks();
 	}
+
 
 	return 0;
 }
