@@ -24,7 +24,7 @@ void init();
 void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
-void loadfontset(FcPattern *pattern);
+int loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
 void fps();
 int read_events();
@@ -197,7 +197,7 @@ loadfont(Font *f, FcPattern *pattern)
 	#endif
 
 	f->ttf = TTF_OpenFont(filepath, usedfontsize);
-	if (!f->ttf) return -1;
+	if (!f->ttf) return 0;
 
 	// TODO: hinting
 	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
@@ -217,7 +217,7 @@ loadfont(Font *f, FcPattern *pattern)
 	f->cache_widths = calloc(FONTCACHESIZE, sizeof(int));
 	assert(f->cache_widths);
 
-	return 0;
+	return 1;
 }
 
 FcPattern *createfontpattern(const char *fontstr)
@@ -226,7 +226,7 @@ FcPattern *createfontpattern(const char *fontstr)
 	return pattern;
 }
 
-void
+int
 loadfontset(FcPattern *pattern)
 {
 	dc.fontsets = realloc(dc.fontsets, ++dc.fontsetlen * sizeof(FontSet));
@@ -249,7 +249,8 @@ loadfontset(FcPattern *pattern)
 		usedfontsize = 12;
 	}
 
-	assert(!loadfont(&fontset->font, pattern));
+	if (!loadfont(&fontset->font, pattern))
+		return 0;
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -257,16 +258,19 @@ loadfontset(FcPattern *pattern)
 	}
 
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	assert(!loadfont(&fontset->ifont, pattern));
+	if (!loadfont(&fontset->ifont, pattern))
+		fontset->ifont = fontset->font;
 	FcPatternDel(pattern, FC_SLANT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	assert(!loadfont(&fontset->bfont, pattern));
+	if (!loadfont(&fontset->bfont, pattern))
+		fontset->bfont = fontset->font;
 	FcPatternDel(pattern, FC_WEIGHT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	assert(!loadfont(&fontset->ibfont, pattern));
+	if (!loadfont(&fontset->ibfont, pattern))
+		fontset->ibfont = fontset->font;
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternDel(pattern, FC_SLANT);
 
@@ -278,6 +282,8 @@ loadfontset(FcPattern *pattern)
 		fs->ifont.fontset = fs;
 		fs->ibfont.fontset = fs;
 	}
+
+	return 1;
 }
 
 void
@@ -295,14 +301,14 @@ init()
 	win.ch = 1;
 
 	FcPattern *pattern = createfontpattern(font);
-	loadfontset(pattern);
+	assert(loadfontset(pattern));
 	FcPatternDestroy(pattern);
 
 	win.cw = ceilf(dc.fontsets->font.width);
 	win.ch = ceilf(dc.fontsets->font.height);
 
 	pattern = createfontpattern(font2);
-	loadfontset(pattern);
+	assert(loadfontset(pattern));
 	FcPatternDestroy(pattern);
 
 	loadcols();
@@ -356,7 +362,8 @@ selectglyphfont(Glyph base)
 		FcCharSetAddChar(charset, base.u);
 		FcPatternAdd(pattern, FC_CHARSET, (FcValue){ .type = FcTypeCharSet, .u = { .c = charset } }, 1);
 
-		loadfontset(pattern);
+		if (!loadfontset(pattern))
+			return 0;
 		fontset = &dc.fontsets[dc.fontsetlen-1];
 
 		FcPatternDestroy(pattern);
@@ -513,9 +520,16 @@ render_glyphs()
 	SDL_RenderClear(win.rnd);
 
 	for (int id = cols*rows-1; id >= 0; id--) {
-		Glyph g = win.glyphs[id];
 		int y = id/cols;
 		int x = id - y * cols;
+		Glyph g = win.glyphs[id];
+
+		Font *f = selectglyphfont(g);
+		if (!f) {
+			g.u = 0xFFFD; // �
+			f = selectglyphfont(g);
+		}
+		assert(f);
 
 		SDL_Color fg, bg;
 		selectglyphcolors(g, &fg, &bg);
@@ -526,8 +540,6 @@ render_glyphs()
 		int winy = y * h;
 		int no = 6*id;
 
-		Font *f = selectglyphfont(g);
-		assert(f);
 
 		FontSet *fs = f->fontset;
 		assert(fs);
@@ -761,7 +773,7 @@ void
 settitle(char *p)
 {
 	char title[100] = {0};
-	if (p[0] == 0) {
+	if (p == 0 || p[0] == 0) {
 		SDL_SetWindowTitle(win.wnd, "typyst");
 	} else {
 		snprintf(title, 100, "typyst: %s", p);
