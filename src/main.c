@@ -57,7 +57,7 @@ void bell()
 }
 
 void
-setmode(int set, unsigned int flags)
+settermmode(int set, unsigned int flags)
 {
 	MODBIT(win.mode, set, flags);
 	/* TODO: redraw

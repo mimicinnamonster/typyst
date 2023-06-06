@@ -1206,10 +1206,10 @@ tsetmode(int priv, int set, const int *args, int narg)
 		if (priv) {
 			switch (*args) {
 			case 1: /* DECCKM -- Cursor key */
-				setmode(set, MODE_APPCURSOR);
+				settermmode(set, MODE_APPCURSOR);
 				break;
 			case 5: /* DECSCNM -- Reverse video */
-				setmode(set, MODE_REVERSE);
+				settermmode(set, MODE_REVERSE);
 				break;
 			case 6: /* DECOM -- Origin */
 				MODBIT(term.c.state, set, CURSOR_ORIGIN);
@@ -1229,32 +1229,32 @@ tsetmode(int priv, int set, const int *args, int narg)
 			case 12: /* att610 -- Start blinking cursor (IGNORED) */
 				break;
 			case 25: /* DECTCEM -- Text Cursor Enable Mode */
-				setmode(!set, MODE_HIDE);
+				settermmode(!set, MODE_HIDE);
 				break;
 			case 9:    /* X10 mouse compatibility mode */
-				setmode(0, MODE_MOUSE);
-				setmode(set, MODE_MOUSEX10);
+				settermmode(0, MODE_MOUSE);
+				settermmode(set, MODE_MOUSEX10);
 				break;
 			case 1000: /* 1000: report button press */
-				setmode(0, MODE_MOUSE);
-				setmode(set, MODE_MOUSEBTN);
+				settermmode(0, MODE_MOUSE);
+				settermmode(set, MODE_MOUSEBTN);
 				break;
 			case 1002: /* 1002: report motion on button press */
-				setmode(0, MODE_MOUSE);
-				setmode(set, MODE_MOUSEMOTION);
+				settermmode(0, MODE_MOUSE);
+				settermmode(set, MODE_MOUSEMOTION);
 				break;
 			case 1003: /* 1003: enable all mouse motions */
-				setmode(0, MODE_MOUSE);
-				setmode(set, MODE_MOUSEMANY);
+				settermmode(0, MODE_MOUSE);
+				settermmode(set, MODE_MOUSEMANY);
 				break;
 			case 1004: /* 1004: send focus events to tty */
-				setmode(set, MODE_FOCUS);
+				settermmode(set, MODE_FOCUS);
 				break;
 			case 1006: /* 1006: extended reporting mode */
-				setmode(set, MODE_MOUSESGR);
+				settermmode(set, MODE_MOUSESGR);
 				break;
 			case 1034:
-				setmode(set, MODE_8BIT);
+				settermmode(set, MODE_8BIT);
 				break;
 			case 1049: /* swap screen & set/restore cursor as xterm */
 				if (!allowaltscreen)
@@ -1279,7 +1279,7 @@ tsetmode(int priv, int set, const int *args, int narg)
 				tcursor((set) ? CURSOR_SAVE : CURSOR_LOAD);
 				break;
 			case 2004: /* 2004: bracketed paste mode */
-				setmode(set, MODE_BRCKTPASTE);
+				settermmode(set, MODE_BRCKTPASTE);
 				break;
 			/* Not implemented mouse modes. See comments there. */
 			case 1001: /* mouse highlight mode; can hang the
@@ -1302,7 +1302,7 @@ tsetmode(int priv, int set, const int *args, int narg)
 			case 0:  /* Error (IGNORED) */
 				break;
 			case 2:
-				setmode(set, MODE_KBDLOCK);
+				settermmode(set, MODE_KBDLOCK);
 				break;
 			case 4:  /* IRM -- Insertion-replacement */
 				MODBIT(term.mode, set, MODE_INSERT);
@@ -1965,10 +1965,10 @@ eschandle(uchar ascii)
 		loadcols();
 		break;
 	case '=': /* DECPAM -- Application keypad */
-		setmode(1, MODE_APPKEYPAD);
+		settermmode(1, MODE_APPKEYPAD);
 		break;
 	case '>': /* DECPNM -- Normal keypad */
-		setmode(0, MODE_APPKEYPAD);
+		settermmode(0, MODE_APPKEYPAD);
 		break;
 	case '7': /* DECSC -- Save Cursor */
 		tcursor(CURSOR_SAVE);

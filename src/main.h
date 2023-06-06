@@ -134,7 +134,7 @@ void loadcols(void);
 int setcolorname(int, const char *);
 void settitle(char *);
 int setcursor(int);
-void setmode(int, unsigned int);
+void settermmode(int, unsigned int);
 void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);

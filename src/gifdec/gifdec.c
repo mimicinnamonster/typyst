@@ -57,7 +57,7 @@ gd_open_gif(const char *fname)
     fd = open(fname, O_RDONLY);
     if (fd == -1) return NULL;
 #ifdef _WIN32
-    setmode(fd, O_BINARY);
+    settermmode(fd, O_BINARY);
 #endif
     /* Header */
     assert(read(fd, sigver, 3));
