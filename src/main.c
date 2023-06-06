@@ -30,7 +30,7 @@ void fps();
 int read_events();
 
 #define FONTATLASSIZE 256
-#define FONTCACHESIZE 10000
+#define FONTCACHESIZE (1 << 16)
 
 static char **opt_cmd	= 0;
 static char *opt_io	= 0;
@@ -42,7 +42,6 @@ TermWindow win;
 Animation anim;
 DrawingContext dc;
 double usedfontsize;
-SDL_Texture* tx_bg;
 SDL_Texture **tx_anim;
 int tx_anim_len;
 unsigned int lasttick;
@@ -213,7 +212,7 @@ loadfont(Font *f, FcPattern *pattern)
 	printf("allocating font cache %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
-	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Surface*));
+	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
 	assert(f->cache);
 	f->cache_widths = calloc(FONTCACHESIZE, sizeof(int));
 	assert(f->cache_widths);
@@ -257,25 +256,27 @@ loadfontset(FcPattern *pattern)
 		usedfontsize = fontval;
 	}
 
-	FcPatternDel(pattern, FC_WEIGHT);
-	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	assert(!loadfont(&fontset->ibfont, pattern));
-
-	FcPatternDel(pattern, FC_SLANT);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
 	assert(!loadfont(&fontset->ifont, pattern));
-
 	FcPatternDel(pattern, FC_SLANT);
-	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
-	assert(!loadfont(&fontset->bfont, pattern));;
+
+	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
+	assert(!loadfont(&fontset->bfont, pattern));
+	FcPatternDel(pattern, FC_WEIGHT);
+
+	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
+	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
+	assert(!loadfont(&fontset->ibfont, pattern));
+	FcPatternDel(pattern, FC_WEIGHT);
+	FcPatternDel(pattern, FC_SLANT);
 
 	// we reallocated, so we need updated all backreferences to fontsets inside fonts
 	for (int i=0; i<dc.fontsetlen; i++) {
 		struct FontSetStruct *fs = &dc.fontsets[i];
 		fs->font.fontset = fs;
 		fs->bfont.fontset = fs;
-		fs->ibfont.fontset = fs;
 		fs->ifont.fontset = fs;
+		fs->ibfont.fontset = fs;
 	}
 }
 
@@ -327,12 +328,6 @@ init()
 	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
-
-	SDL_Surface* tmp = SDL_CreateRGBSurface(0, 1, 1, 32, RMASK, GMASK, BMASK, AMASK);
-	SDL_SetSurfaceBlendMode(tmp, SDL_BLENDMODE_BLEND);
-	SDL_FillRect(tmp, 0, 0x10101010);
-	tx_bg = SDL_CreateTextureFromSurface(win.rnd, tmp);
-	SDL_FreeSurface(tmp);
 
 	resize(w, h);
 
@@ -615,27 +610,30 @@ render_glyphs()
 
 			ftxt = SDL_CreateTextureFromSurface(win.rnd, fsur);
 
-			if (f->cache[g.u] == 0) {
-				if (g.u < FONTCACHESIZE) {
-					#ifdef DEBUG
-					printf("caching glyph %lc\n", g.u);
-					#endif
-					f->cache[g.u] = ftxt;
-					f->cache_widths[g.u] = fsur->w;
-				}
+			assert(f);
+			assert(f->cache);
 
-				if (g.u < FONTATLASSIZE) {
-					SDL_Rect atlasrect = {
-						g.u * win.cw * 2,
-						font_type * win.ch,
-						win.cw,
-						win.ch
-					};
-					#ifdef DEBUG
-					printf("atlasing glyph %lc (%d) at pos: %d %d\n", g.u, g.u, atlasrect.x, atlasrect.y);
-					#endif
-					SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
-				}
+			int is_cached = g.u < FONTCACHESIZE && f->cache[g.u] != 0;
+
+			if (g.u < FONTATLASSIZE && !is_cached) {
+				SDL_Rect atlasrect = {
+					g.u * win.cw * 2,
+					font_type * win.ch,
+					win.cw,
+					win.ch
+				};
+				#ifdef DEBUG
+				printf("atlasing glyph %lc (%d) at pos: %d %d\n", g.u, g.u, atlasrect.x, atlasrect.y);
+				#endif
+				SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
+			}
+
+			if (g.u < FONTCACHESIZE && !is_cached) {
+				#ifdef DEBUG
+				printf("caching glyph %lc\n", g.u);
+				#endif
+				f->cache[g.u] = ftxt;
+				f->cache_widths[g.u] = fsur->w;
 			}
 
 			ftxt_rect.w = fsur->w;

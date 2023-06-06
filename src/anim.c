@@ -135,6 +135,7 @@ void
 initanim(char *filename)
 {
 	gif = gd_open_gif(filename);
+	assert(gif);
 	tmppixels = malloc(gif->width * gif->height * 3);
 	tmpsrf = SDL_CreateRGBSurface(0, gif->width, gif->height, 32, 0, 0, 0, 0);
 

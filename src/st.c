@@ -1,6 +1,7 @@
 #define _XOPEN_SOURCE
 
 /* See LICENSE for license details. */
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -2208,9 +2209,9 @@ tresize(int col, int row)
 
 	/* allocate any new rows */
 	for (/* i = minrow */; i < row; i++) {
-		term.line[i] = xmalloc(col * sizeof(Glyph));
-		// TODO: LEAK! COULD BE WHY ALT BUFFER DOESNT WORK
-		term.alt[i] = xmalloc(col * sizeof(Glyph));
+		// TODO: either a leak or analyzer bug...
+		assert(term.line[i] = xmalloc(col * sizeof(Glyph)));
+		assert(term.alt[i] = xmalloc(col * sizeof(Glyph)));
 	}
 	if (col > term.col) {
 		bp = term.tabs + term.col;

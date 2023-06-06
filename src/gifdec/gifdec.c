@@ -14,12 +14,8 @@
 #include <unistd.h>
 #endif
 
-#ifndef MIN
-#define MIN(A, B) ((A) < (B) ? (A) : (B))
-#endif
-#ifndef MAX
-#define MAX(A, B) ((A) > (B) ? (A) : (B))
-#endif
+#define GIFMIN(A, B) ((A) < (B) ? (A) : (B))
+#define GIFMAX(A, B) ((A) > (B) ? (A) : (B))
 
 typedef struct Entry {
     uint16_t length;
@@ -241,7 +237,7 @@ static Table *
 new_table(int key_size)
 {
     int key;
-    int init_bulk = MAX(1 << (key_size + 1), 0x100);
+    int init_bulk = GIFMAX(1 << (key_size + 1), 0x100);
     Table *table = malloc(sizeof(*table) + sizeof(Entry) * init_bulk);
     if (table) {
         table->bulk = init_bulk;
@@ -296,7 +292,7 @@ get_key(gd_GIF *gif, int key_size, uint8_t *sub_len, uint8_t *shift, uint8_t *by
             assert(read(gif->fd, byte, 1));
             (*sub_len)--;
         }
-        frag_size = MIN(key_size - bits_read, 8 - rpad);
+        frag_size = GIFMIN(key_size - bits_read, 8 - rpad);
         key |= ((uint16_t) ((*byte) >> rpad)) << bits_read;
     }
     /* Clear extra bits to the left. */
