@@ -192,6 +192,8 @@ loadfont(Font *f, FcPattern *pattern)
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
 
+	f->filepath = filepath;
+
 	#ifdef DEBUG
 	printf("loading font file: %s, font size: %f\n", filepath, usedfontsize);
 	#endif
@@ -390,7 +392,7 @@ selectglyphfont(Glyph base)
 		assert(fontset->atlas);
 		SDL_SetTextureBlendMode(fontset->atlas, SDL_BLENDMODE_BLEND);
 		#ifdef DEBUG
-		printf("creating atlas for fontset %p: %d x %d\n", (void *)fontset, w, h);
+		printf("creating atlas for fontset %s: %d x %d\n", fontset->font.filepath, w, h);
 		#endif
 	}
 
@@ -602,7 +604,7 @@ render_glyphs()
 			#endif
 
 			SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
-			assert(fsur);
+			if (!fsur) continue;
 
 			if (f->width != width) {
 				#ifdef DEBUG

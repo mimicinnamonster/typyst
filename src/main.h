@@ -59,6 +59,7 @@ typedef struct {
 	int ascent;
 	int descent;
 	FcFontSet *set;
+	char *filepath;
 	FcPattern *pattern;
 	FcPattern *match;
 	FcCharSet *charset;
