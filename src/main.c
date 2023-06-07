@@ -176,6 +176,7 @@ setcolorname(int x, const char *name)
 int
 loadfont(Font *f, FcPattern *pattern)
 {
+	assert(f);
 	char *filepath;
 	FcResult result;
 
@@ -187,6 +188,8 @@ loadfont(Font *f, FcPattern *pattern)
 	f->pattern = duplicate;
 	FcConfigSubstitute(0, f->pattern, FcMatchPattern);
 
+	assert(f);
+	assert(f->pattern);
 	f->match = FcFontMatch(0, f->pattern, &result);
 
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
@@ -370,9 +373,17 @@ selectglyphfont(Glyph base)
 
 		FcPatternDestroy(pattern);
 		FcCharSetDestroy(charset);
+		FcCharSetAddChar(fontset->font.charset, base.u);
 	}
 
 	f = &(fontset->font);
+
+	if (!f)
+		return 0;
+
+	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
+		return 0;
+	}
 
 	/* Select right font */
 	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
@@ -487,6 +498,10 @@ int
 getglyphwidth(Rune u)
 {
 	Font *f = selectglyphfont((Glyph){ .u = u });
+
+	if (!f) {
+		return 0;
+	}
 
 	if (f->widths[u] != 0)
 		return f->widths[u];
