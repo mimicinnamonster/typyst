@@ -176,21 +176,25 @@ setcolorname(int x, const char *name)
 int
 loadfont(Font *f, FcPattern *pattern)
 {
-	assert(f);
 	char *filepath;
 	FcResult result;
 
-	// TODO: slanted bolded
-	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ROMAN);
-	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
-
 	FcPattern *duplicate = FcPatternDuplicate(pattern);
 	f->pattern = duplicate;
-	FcConfigSubstitute(0, f->pattern, FcMatchPattern);
 
-	assert(f);
-	assert(f->pattern);
+	//FcPatternAddInteger(f->pattern, FC_SLANT, FC_SLANT_ROMAN);
+	//FcPatternAddInteger(f->pattern, FC_WEIGHT, FC_WEIGHT_MEDIUM);
+	//FcConfigSubstitute(0, f->pattern, FcMatchPattern);
+	FcDefaultSubstitute(f->pattern);
+
 	f->match = FcFontMatch(0, f->pattern, &result);
+	if (result != FcResultMatch) {
+		printf("no match...\n");
+		FcPatternDestroy(f->pattern);
+		return 0;
+	}
+
+	printf("match...\n");
 
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
@@ -237,7 +241,6 @@ loadfontset(FcPattern *pattern)
 	dc.fontsets = realloc(dc.fontsets, ++dc.fontsetlen * sizeof(FontSet));
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
-	init_geometry(&(fontset->geo));
 
 	double fontval;
 
@@ -246,16 +249,14 @@ loadfontset(FcPattern *pattern)
 	} else if (FcPatternGetDouble(pattern, FC_SIZE, 0, &fontval) == FcResultMatch) {
 		usedfontsize = -1;
 	} else {
-		/*
-		 * Default font size is 12, if none given. This is to
-		 * have a known usedfontsize value.
-		 */
 		FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
 		usedfontsize = 12;
 	}
 
-	if (!loadfont(&fontset->font, pattern))
+	if (!loadfont(&fontset->font, pattern)) {
+		dc.fontsetlen--;
 		return 0;
+	}
 
 	if (usedfontsize < 0) {
 		FcPatternGetDouble(fontset->font.pattern, FC_PIXEL_SIZE, 0, &fontval);
@@ -287,6 +288,8 @@ loadfontset(FcPattern *pattern)
 		fs->ifont.fontset = fs;
 		fs->ibfont.fontset = fs;
 	}
+
+	init_geometry(&(fontset->geo));
 
 	return 1;
 }
@@ -351,29 +354,35 @@ init()
 }
 
 Font *
-selectglyphfont(Glyph base)
+selectglyphfont(Glyph g)
 {
 	Font *f = 0;
 	FontSet *fontset = dc.fontsets;
 
-	while (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
+	while (FcFalse == FcCharSetHasChar(fontset->font.charset, g.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
 		fontset++;
 	}
 
-	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
+	if (FcFalse == FcCharSetHasChar(fontset->font.charset, g.u)) {
 		FcPattern *pattern = createfontpattern(font);
 
 		FcCharSet *charset = FcCharSetCreate();
-		FcCharSetAddChar(charset, base.u);
+		printf("looking for font with char %d\n", g.u);
+		FcCharSetAddChar(charset, g.u);
 		FcPatternAdd(pattern, FC_CHARSET, (FcValue){ .type = FcTypeCharSet, .u = { .c = charset } }, 1);
 
-		if (!loadfontset(pattern))
-			return 0;
-		fontset = &dc.fontsets[dc.fontsetlen-1];
+		int fontsetFound = loadfontset(pattern);
 
 		FcPatternDestroy(pattern);
 		FcCharSetDestroy(charset);
-		FcCharSetAddChar(fontset->font.charset, base.u);
+
+		if (!fontsetFound)
+			return 0;
+
+		fontset = &dc.fontsets[dc.fontsetlen-1];
+		FcCharSetAddChar(fontset->font.charset, g.u);
+
+		assert(FcTrue == FcCharSetHasChar(fontset->font.charset, g.u));
 	}
 
 	f = &(fontset->font);
@@ -381,16 +390,16 @@ selectglyphfont(Glyph base)
 	if (!f)
 		return 0;
 
-	if (FcFalse == FcCharSetHasChar(fontset->font.charset, base.u)) {
+	if (FcFalse == FcCharSetHasChar(fontset->font.charset, g.u)) {
 		return 0;
 	}
 
 	/* Select right font */
-	if (base.mode & ATTR_ITALIC && base.mode & ATTR_BOLD) {
+	if (g.mode & ATTR_ITALIC && g.mode & ATTR_BOLD) {
 		f = &fontset->ibfont;
-	} else if (base.mode & ATTR_ITALIC) {
+	} else if (g.mode & ATTR_ITALIC) {
 		f = &fontset->ifont;
-	} else if (base.mode & ATTR_BOLD) {
+	} else if (g.mode & ATTR_BOLD) {
 		f = &fontset->bfont;
 	}
 
@@ -411,35 +420,35 @@ selectglyphfont(Glyph base)
 }
 
 void
-selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
+selectglyphcolors(Glyph g, SDL_Color *ret_fg, SDL_Color *ret_bg)
 {
 	RenderColor *fg, *bg;
 	RenderColor *temp;
 	RenderColor colfg, colbg;
 
-	if (IS_TRUECOL(base.fg)) {
+	if (IS_TRUECOL(g.fg)) {
 		colfg.alpha = 0xff;
-		colfg.red = TRUERED(base.fg);
-		colfg.green = TRUEGREEN(base.fg);
-		colfg.blue = TRUEBLUE(base.fg);
+		colfg.red = TRUERED(g.fg);
+		colfg.green = TRUEGREEN(g.fg);
+		colfg.blue = TRUEBLUE(g.fg);
 		fg = &colfg;
 	} else {
-		fg = &dc.col[base.fg];
+		fg = &dc.col[g.fg];
 	}
 
-	if (IS_TRUECOL(base.bg)) {
+	if (IS_TRUECOL(g.bg)) {
 		colbg.alpha = 0xff;
-		colbg.red = TRUERED(base.bg);
-		colbg.green = TRUEGREEN(base.bg);
-		colbg.blue = TRUEBLUE(base.bg);
+		colbg.red = TRUERED(g.bg);
+		colbg.green = TRUEGREEN(g.bg);
+		colbg.blue = TRUEBLUE(g.bg);
 		bg = &colbg;
 	} else {
-		bg = &dc.col[base.bg];
+		bg = &dc.col[g.bg];
 	}
 
 	/* Change basic system colors [0-7] to bright system colors [8-15] */
-	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && base.fg <= 7)
-		fg = &dc.col[base.fg + 8];
+	if ((g.mode & ATTR_BOLD_FAINT) == ATTR_BOLD && g.fg <= 7)
+		fg = &dc.col[g.fg + 8];
 
 	if (IS_SET(MODE_REVERSE)) {
 		if (fg == &dc.col[defaultfg]) {
@@ -463,7 +472,7 @@ selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 		}
 	}
 
-	if ((base.mode & ATTR_BOLD_FAINT) == ATTR_FAINT) {
+	if ((g.mode & ATTR_BOLD_FAINT) == ATTR_FAINT) {
 		colfg.red = fg->red / 2;
 		colfg.green = fg->green / 2;
 		colfg.blue = fg->blue / 2;
@@ -471,16 +480,16 @@ selectglyphcolors(Glyph base, SDL_Color *ret_fg, SDL_Color *ret_bg)
 		fg = &colfg;
 	}
 
-	if (base.mode & ATTR_REVERSE) {
+	if (g.mode & ATTR_REVERSE) {
 		temp = fg;
 		fg = bg;
 		bg = temp;
 	}
 
-	if (base.mode & ATTR_BLINK && win.mode & MODE_BLINK)
+	if (g.mode & ATTR_BLINK && win.mode & MODE_BLINK)
 		fg = bg;
 
-	if (base.mode & ATTR_INVISIBLE)
+	if (g.mode & ATTR_INVISIBLE)
 		fg = bg;
 
 	ret_fg->r = fg->red;
@@ -521,10 +530,10 @@ getglyphwidth(Rune u)
 }
 
 void
-drawglyph(Glyph base, int x, int y)
+drawglyph(Glyph g, int x, int y)
 {
 	int id = (y*cols+x);
-	win.glyphs[id] = base;
+	win.glyphs[id] = g;
 }
 
 int
@@ -557,7 +566,6 @@ render_glyphs()
 		int winy = y * h;
 		int no = 6*id;
 
-
 		FontSet *fs = f->fontset;
 		assert(fs);
 		assert(fs->atlas);
@@ -582,12 +590,15 @@ render_glyphs()
 
 		for (int i=0; i<dc.fontsetlen; i++) {
 			FontSet *fs = &dc.fontsets[i];
-			fs->geo.verts[no+0].tex_coord = (SDL_FPoint){0, 0};
-			fs->geo.verts[no+1].tex_coord = (SDL_FPoint){0, 0};
-			fs->geo.verts[no+2].tex_coord = (SDL_FPoint){0, 0};
-			fs->geo.verts[no+3].tex_coord = (SDL_FPoint){0, 0};
-			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){0, 0};
-			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){0, 0};
+			for (int j=0; j<charlen; j++) {
+				int no2 = no + j*6;
+				fs->geo.verts[no2+0].tex_coord = (SDL_FPoint){0, 0};
+				fs->geo.verts[no2+1].tex_coord = (SDL_FPoint){0, 0};
+				fs->geo.verts[no2+2].tex_coord = (SDL_FPoint){0, 0};
+				fs->geo.verts[no2+3].tex_coord = (SDL_FPoint){0, 0};
+				fs->geo.verts[no2+4].tex_coord = (SDL_FPoint){0, 0};
+				fs->geo.verts[no2+5].tex_coord = (SDL_FPoint){0, 0};
+			}
 		}
 
 		if (!g.u)
@@ -809,26 +820,26 @@ void
 drawline(Line line, int x1, int y1, int x2)
 {
 	int i, x, ox;
-	Glyph base, new;
+	Glyph g, new;
 
 	i = ox = 0;
 	for (x = x1; x < x2; x++) {
 		new = line[x];
 		if (new.mode == ATTR_WDUMMY)
 			continue;
-		//if (i > 0 && ATTRCMP(base, new)) {
+		//if (i > 0 && ATTRCMP(g, new)) {
 		if (i > 0) {
-			drawglyph(base, ox, y1);
+			drawglyph(g, ox, y1);
 			i = 0;
 		}
 		if (i == 0) {
 			ox = x;
-			base = new;
+			g = new;
 		}
 		i++;
 	}
 	if (i > 0)
-		drawglyph(base, ox, y1);
+		drawglyph(g, ox, y1);
 }
 
 
