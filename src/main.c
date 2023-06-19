@@ -382,7 +382,21 @@ selectglyphfont(Glyph g)
 		fontset = &dc.fontsets[dc.fontsetlen-1];
 		FcCharSetAddChar(fontset->font.charset, g.u);
 
-		assert(FcTrue == FcCharSetHasChar(fontset->font.charset, g.u));
+		if (FcTrue != FcCharSetHasChar(fontset->font.charset, g.u)) {
+			FcPatternDestroy(fontset->font.pattern);
+			FcPatternDestroy(fontset->ifont.pattern);
+			FcPatternDestroy(fontset->bfont.pattern);
+			FcPatternDestroy(fontset->ibfont.pattern);
+
+			FcCharSetDestroy(fontset->font.charset);
+			FcCharSetDestroy(fontset->ifont.charset);
+			FcCharSetDestroy(fontset->bfont.charset);
+			FcCharSetDestroy(fontset->ibfont.charset);
+
+			*fontset = (FontSet){0};
+			dc.fontsetlen--;
+			return 0;
+		}
 	}
 
 	f = &(fontset->font);
