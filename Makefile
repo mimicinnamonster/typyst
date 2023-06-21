@@ -15,7 +15,7 @@ INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
 LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg 
 EXE = $(BUILD_DIR)/$(NAME)
 
-BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -std=c11 -pedantic -Werror
+BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic -Werror
 BASE_LDFLAGS =
 
 DEBUG_CFLAGS = -Wall -Wextra -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-coverage

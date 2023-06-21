@@ -1,5 +1,3 @@
-#define _XOPEN_SOURCE
-
 /* See LICENSE for license details. */
 #include <assert.h>
 #include <ctype.h>
@@ -2003,11 +2001,10 @@ tputc(Rune u)
 		width = len = 1;
 	} else {
 		len = utf8encode(u, c);
-		if (!control && (width = wcwidth(u)) == -1)
+		if (!control)
 		{
 			width = getglyphwidth(u);
-			if (width == -1)
-				width = 1;
+			//width = 1;
 		}
 	}
 

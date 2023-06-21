@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <wchar.h>
 
 #include <fontconfig/fontconfig.h>
 #include <SDL.h>
@@ -221,10 +222,16 @@ loadfont(Font *f, FcPattern *pattern)
 	printf("allocating font cache %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
+	memset(f->widths, -1, MAXGLYPHS * sizeof(f->widths[0]));
+
 	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
 	assert(f->cache);
+
 	f->cache_widths = calloc(FONTCACHESIZE, sizeof(int));
 	assert(f->cache_widths);
+
+	f->cache_heights = calloc(FONTCACHESIZE, sizeof(int));
+	assert(f->cache_heights);
 
 	return 1;
 }
@@ -526,19 +533,32 @@ getglyphwidth(Rune u)
 		return 0;
 	}
 
-	if (f->widths[u] != 0)
+	if (f->widths[u] != -1)
 		return f->widths[u];
 
-	f->widths[u] = 1;
+	f->widths[u] = wcwidth(u);
+
+	if (f->widths[u] != -1)
+		return f->widths[u];
+
+	// ignore glyph metrics for now
+	return 1;
 
 	char text[8] = {0};
 	utf8encode(u, text);
+	int before = f->widths[u];
 
 	int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
 	TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
 
 	if (advance > win.cw)
 		f->widths[u] = 2;
+	else
+		f->widths[u] = 0;
+
+	#ifdef DEBUG
+	printf("width %s %x: %d before %d\n", text, u, f->widths[u], before);
+	#endif
 
 	return f->widths[u];
 }
@@ -546,8 +566,23 @@ getglyphwidth(Rune u)
 void
 drawglyph(Glyph g, int x, int y)
 {
+	int w = getglyphwidth(g.u);
+
+	if (w < 1)
+		return;
+
 	int id = (y*cols+x);
 	win.glyphs[id] = g;
+
+	if (w < 2)
+		return;
+
+	char text[8] = {0};
+	utf8encode(g.u, text);
+
+	#ifdef DEBUG
+	printf("print %s %d (width %d) at %d,%d\n", text, g.u, w, x,y);
+	#endif
 }
 
 int
@@ -638,6 +673,7 @@ render_glyphs()
 
 		if (ftxt) {
 			ftxt_rect.w = f->cache_widths[g.u];
+			ftxt_rect.h = f->cache_heights[g.u];
 		} else {
 			#ifdef DEBUG
 			printf("producing glyph %s %d\n", text, g.u);
@@ -651,9 +687,10 @@ render_glyphs()
 				printf("shrinking %s %d\n", text, g.u);
 				#endif
 
-				int nw = MAX(f->width/width, 1);
-				int nh = MAX(f->height/win.ch, 1);
-				SDL_Surface *shrunk = shrinkSurface(fsur, nw, nh);
+				int nw = f->width/width;
+				int nh = f->height/win.ch;
+				int scale = MAX(nw, nh);
+				SDL_Surface *shrunk = shrinkSurface(fsur, scale, scale);
 				SDL_FreeSurface(fsur);
 				fsur = shrunk;
 			}
@@ -688,11 +725,17 @@ render_glyphs()
 				#endif
 				f->cache[g.u] = ftxt;
 				f->cache_widths[g.u] = fsur->w;
+				f->cache_heights[g.u] = fsur->h;
 			}
 
 			ftxt_rect.w = fsur->w;
+			ftxt_rect.h = fsur->h;
 			SDL_FreeSurface(fsur);
 		}
+
+		// center
+		ftxt_rect.x += (width - ftxt_rect.w) / 2;
+		ftxt_rect.y += (win.ch - ftxt_rect.h) / 2;
 
 		// render
 		fs->geo.verts[no+0].color = fg;
@@ -1163,7 +1206,7 @@ randombullshitgo() {
 int
 main(int argc, char *argv[])
 {
-	setlocale(LC_CTYPE, "UTF-8");
+	setlocale(LC_ALL, "C.UTF-8");
 
 	ARGBEGIN {
 	case 'f': {
