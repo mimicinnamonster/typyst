@@ -12,10 +12,13 @@ PKGCONF_DEPS = fontconfig sdl2 SDL2_ttf SDL2_gfx
 SRC = $(wildcard src/*.c)
 OBJ = $(SRC:src/%.c=$(BUILD_DIR)/%.o)
 INCS = `$(PKG_CONFIG) --cflags $(PKGCONF_DEPS)`
-LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg 
+# INCS = -D_REENTRANT -I/usr/include/uuid -I/usr/include/freetype2 -I/usr/include/libpng16 -I../SDL/include -I../SDL_ttf/SDL_ttf -I../SDL_gfx
+LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg
+# LIBS = -L../SDL/build/build/ -L../SDL_ttf/build/ -L../SDL_gfx/ -lutil -lfontconfig -lfreetype -lSDL2_ttf -lSDL2_gfx -lSDL2
 EXE = $(BUILD_DIR)/$(NAME)
 
 BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic -Werror
+# BASE_LDFLAGS = -Wl,-rpath,\$$ORIGIN
 BASE_LDFLAGS =
 
 DEBUG_CFLAGS = -Wall -Wextra -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-coverage
@@ -65,7 +68,7 @@ profile:
 	sudo sysctl kernel.perf_event_paranoid=0
 
 clean:
-	rm -rf $(BUILD_DIR)
+	rm -rf $(EXE) $(OBJ)
 
 install: $(EXE)
 	rm -rf $(INSTALL_BIN_DIR)/$(NAME)

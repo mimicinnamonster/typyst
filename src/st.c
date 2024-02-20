@@ -2289,5 +2289,5 @@ void
 redraw(void)
 {
 	tfulldirt();
-	draw();
+	//draw();
 }

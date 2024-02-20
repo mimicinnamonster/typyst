@@ -41,6 +41,7 @@ typedef struct {
 	SDL_Texture *txt_background;
 	int drawing;
 	int updated;
+	int should_draw;
 	int w, h; /* window width and height */
 	int cw, ch; /* char width and height */
 	int tw, th; /* tty width and height */

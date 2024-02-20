@@ -1,4 +1,4 @@
-static char *font = "Ubuntu Mono:pixelsize=20:antialias=true:autohint=true";
+static char *font = "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true";
 static char *font2 = "NotoColorEmoji";
 float alpha = 0.8;
 

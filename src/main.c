@@ -12,7 +12,9 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_thread.h>
+//# include <SDL_rotozoom.h>
 #include <SDL2/SDL2_rotozoom.h>
+
 
 #include "st.h"
 #include "arg.h"
@@ -101,6 +103,7 @@ resize(int width, int height)
 	ttyresize(cols, rows);
 
 	redraw();
+	win.should_draw = 1;
 }
 
 ushort
@@ -190,12 +193,9 @@ loadfont(Font *f, FcPattern *pattern)
 
 	f->match = FcFontMatch(0, f->pattern, &result);
 	if (result != FcResultMatch) {
-		printf("no match...\n");
 		FcPatternDestroy(f->pattern);
 		return 0;
 	}
-
-	printf("match...\n");
 
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
@@ -824,6 +824,11 @@ render_animation()
 void
 render()
 {
+	if (win.should_draw) {
+		draw();
+		win.should_draw = 0;
+	}
+
 	SDL_LockMutex(mutex);
 	int anim = render_animation();
 
@@ -929,6 +934,7 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_FOCUS_GAINED: {
 			win.lastfocus = ev->window.timestamp;
 			redraw();
+			win.should_draw = 1;
 			break;
 		}
 	}
@@ -1123,7 +1129,8 @@ read_tty() {
 
 			ttyread();
 			MODBIT(win.mode, 1, MODE_VISIBLE);
-			draw();
+			//draw();
+			win.should_draw = 1;
 
 			SDL_UnlockMutex(mutex);
 		}
