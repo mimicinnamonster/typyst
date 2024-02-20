@@ -33,10 +33,11 @@ int read_events();
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE (1 << 16)
 
-static char **opt_cmd	= 0;
+static char **opt_cmd = 0;
 static char *opt_io	= 0;
-static char *opt_line	= 0;
-static char *opt_anim   = 0;
+static char *opt_line = 0;
+static char *opt_anim = 0;
+static int opt_fullscreen = 1;
 static unsigned int opt_fps = 30;
 
 TermWindow win;
@@ -100,7 +101,6 @@ resize(int width, int height)
 	ttyresize(cols, rows);
 
 	redraw();
-
 }
 
 ushort
@@ -342,11 +342,18 @@ init()
 	int w = cols * win.cw;
 	int h = rows * win.ch;
 
+	if (opt_fullscreen) {
+		SDL_DisplayMode DM;
+		SDL_GetCurrentDisplayMode(0, &DM);
+		w = DM.w;
+		h = DM.h;
+	}
+
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 
-	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL);
+	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
 
@@ -357,6 +364,7 @@ init()
 	if (opt_anim)
 		initanim(opt_anim);
 
+	SDL_EnableScreenSaver();
 	SDL_ShowWindow(win.wnd);
 }
 
@@ -777,8 +785,9 @@ render_glyphs()
 	int c = 6 * cols * rows;
 	for (int dci=0; dci<dc.fontsetlen; dci++) {
 		FontSet *fs = &dc.fontsets[dci];
-		if (fs->atlas)
+		if (fs->atlas){
 			SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
+		}
 	}
 
 	win.updated = 0;
@@ -917,9 +926,11 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_RESIZED:
 			resize(ev->window.data1, ev->window.data2);
 			break;
-		case SDL_WINDOWEVENT_FOCUS_GAINED:
+		case SDL_WINDOWEVENT_FOCUS_GAINED: {
 			win.lastfocus = ev->window.timestamp;
+			redraw();
 			break;
+		}
 	}
 }
 
@@ -1225,6 +1236,11 @@ main(int argc, char *argv[])
 	case 't': {
 		char *trans = EARGF(usage());
 		alpha = strtof(trans, 0);
+		break;
+	}
+	case 's': {
+		char *fullscreen = EARGF(usage());
+		opt_fullscreen = (unsigned int)atoi(fullscreen);
 		break;
 	}
 	case 'e':

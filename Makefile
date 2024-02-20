@@ -53,7 +53,7 @@ test: clean $(EXE)
 debug: clean
 	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS) $(CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make $(EXE)
 	#$(EXE) -a ~/Videos/bgs/girl.gif bash --init-file ./test.sh
-	#$(EXE) bash --init-file ./test.sh
+	$(EXE) bash --init-file ./test.sh
 
 analyze:
 	CFLAGS="-fanalyzer $(CFLAGS)" make debug
