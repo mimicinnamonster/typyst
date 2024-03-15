@@ -97,7 +97,10 @@ resize(int width, int height)
 	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
 	SDL_SetTextureBlendMode(win.txt_background, SDL_BLENDMODE_BLEND);
 
-	win.glyphs = realloc(win.glyphs, cols*rows*sizeof(Glyph));
+	int newlen = cols*rows;
+
+	win.glyphs = realloc(win.glyphs, newlen*sizeof(Glyph));
+	//memset(win.glyphs, 0, newlen); // TODO: figure out how to zero only new bits
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -316,14 +319,18 @@ init()
 	win.ch = 1;
 
 	FcPattern *pattern = createfontpattern(font);
-	assert(loadfontset(pattern));
+	assert(pattern);
+	int fsres = loadfontset(pattern);
+	assert(fsres);
 	FcPatternDestroy(pattern);
 
 	win.cw = ceilf(dc.fontsets->font.width);
 	win.ch = ceilf(dc.fontsets->font.height);
 
 	pattern = createfontpattern(font2);
-	assert(loadfontset(pattern));
+	assert(pattern);
+	fsres = loadfontset(pattern);
+	assert(fsres);
 	FcPatternDestroy(pattern);
 
 	loadcols();
@@ -606,6 +613,7 @@ render_glyphs()
 		int y = id/cols;
 		int x = id - y * cols;
 		Glyph g = win.glyphs[id];
+		//printf("glyph id: %d\n", id);
 
 		Font *f = selectglyphfont(g);
 		if (!f) {

@@ -21,8 +21,8 @@ BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic -Werr
 # BASE_LDFLAGS = -Wl,-rpath,\$$ORIGIN
 BASE_LDFLAGS =
 
-DEBUG_CFLAGS = -Wall -Wextra -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-coverage
-DEBUG_LDFLAGS = -fsanitize=address -fsanitize=undefined # -fprofile-arcs -ftest-coverage
+DEBUG_CFLAGS = -ggdb -Wall -Wextra -fsanitize=address # -fsanitize=undefined # -fprofile-arcs -ftest-coverag
+DEBUG_LDFLAGS = -fsanitize=address # -fsanitize=undefined # -fprofile-arcs -ftest-coverage
 
 RELEASE_CFLAGS = -O3 -s
 RELEASE_LDFLAGS = -O3 -s
@@ -54,9 +54,10 @@ test: clean $(EXE)
 	$(EXE) bash --init-file ./test.sh
 
 debug: clean
+	@echo $(CFLAGS)
 	CFLAGS="-g -DDEBUG $(DEBUG_CFLAGS) $(CFLAGS)" LDFLAGS="-g $(DEBUG_LDFLAGS)" make $(EXE)
 	#$(EXE) -a ~/Videos/bgs/girl.gif bash --init-file ./test.sh
-	$(EXE) bash --init-file ./test.sh
+	#$(EXE) bash --init-file ./test2.sh
 
 analyze:
 	CFLAGS="-fanalyzer $(CFLAGS)" make debug

@@ -1,3 +1,3 @@
 echo ∈hello
-echo |🙇|🔥|🎅|❤|
+echo '|🙇|🔥|🎅|❤|'
 sleep 1
