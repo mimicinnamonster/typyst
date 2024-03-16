@@ -443,19 +443,6 @@ selectglyphfont(Glyph g)
 		f = &fontset->bfont;
 	}
 
-	// TODO: figure out how to move this back to loadfont
-	// dynamically create atlas if it wasn't created yet
-	if (!fontset->atlas) {
-		int w = FONTATLASSIZE * win.cw * 2;
-		int h = win.ch * 4;
-		fontset->atlas = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, w, h);
-		assert(fontset->atlas);
-		SDL_SetTextureBlendMode(fontset->atlas, SDL_BLENDMODE_BLEND);
-		#ifdef DEBUG
-		printf("creating atlas for fontset %s: %d x %d\n", fontset->font.filepath, w, h);
-		#endif
-	}
-
 	return f;
 }
 
@@ -636,6 +623,18 @@ render_glyphs()
 
 		FontSet *fs = f->fontset;
 		assert(fs);
+
+		// dynamically create atlas if it wasn't created yet
+		if (!fs->atlas) {
+			int w = FONTATLASSIZE * win.cw * 2;
+			int h = win.ch * 4;
+			fs->atlas = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, w, h);
+			assert(fs->atlas);
+			SDL_SetTextureBlendMode(fs->atlas, SDL_BLENDMODE_BLEND);
+			#ifdef DEBUG
+			printf("creating atlas for fontset %s: %d x %d\n", fs->font.filepath, w, h);
+			#endif
+		}
 		assert(fs->atlas);
 
 		int charlen = ((g.mode & ATTR_WIDE) ? 2 : 1);
