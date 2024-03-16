@@ -100,7 +100,7 @@ resize(int width, int height)
 	int newlen = cols*rows;
 
 	win.glyphs = realloc(win.glyphs, newlen*sizeof(Glyph));
-	//memset(win.glyphs, 0, newlen); // TODO: figure out how to zero only new bits
+	memset(win.glyphs, 0, newlen); // TODO: figure out how to zero only new bits
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -225,6 +225,7 @@ loadfont(Font *f, FcPattern *pattern)
 	printf("allocating font cache %ld\n", FONTCACHESIZE * sizeof(SDL_Surface*));
 	#endif
 
+	f->widths = calloc(MAXGLYPHS, sizeof(f->widths[0]));
 	memset(f->widths, -1, MAXGLYPHS * sizeof(f->widths[0]));
 
 	f->cache = calloc(FONTCACHESIZE, sizeof(SDL_Texture*));
@@ -356,6 +357,8 @@ init()
 		h = DM.h;
 	}
 
+	resize(w, h);
+
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
@@ -364,7 +367,6 @@ init()
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
 
-	resize(w, h);
 
 	win.mode = MODE_NUMLOCK;
 
@@ -389,7 +391,9 @@ selectglyphfont(Glyph g)
 		FcPattern *pattern = createfontpattern(font);
 
 		FcCharSet *charset = FcCharSetCreate();
+		#ifdef DEBUG
 		printf("looking for font with char %d\n", g.u);
+		#endif
 		FcCharSetAddChar(charset, g.u);
 		FcPatternAdd(pattern, FC_CHARSET, (FcValue){ .type = FcTypeCharSet, .u = { .c = charset } }, 1);
 
@@ -613,7 +617,6 @@ render_glyphs()
 		int y = id/cols;
 		int x = id - y * cols;
 		Glyph g = win.glyphs[id];
-		//printf("glyph id: %d\n", id);
 
 		Font *f = selectglyphfont(g);
 		if (!f) {
@@ -832,12 +835,13 @@ render_animation()
 void
 render()
 {
+	SDL_LockMutex(mutex);
+
 	if (win.should_draw) {
 		draw();
 		win.should_draw = 0;
 	}
 
-	SDL_LockMutex(mutex);
 	int anim = render_animation();
 
 	if (opt_anim && anim){
@@ -1098,26 +1102,26 @@ handle_textinput(SDL_Event *ev)
 int
 read_events()
 {
+	SDL_LockMutex(mutex);
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
-			SDL_LockMutex(mutex);
-			switch(event.type) {
-				case SDL_TEXTINPUT:
-					handle_textinput(&event);
-					break;
-				case SDL_KEYDOWN:
-					handle_keypress(&event);
-					break;
-				case SDL_WINDOWEVENT:
-					handle_window(&event);
-					break;
-			}
-			SDL_UnlockMutex(mutex);
+		switch(event.type) {
+			case SDL_TEXTINPUT:
+				handle_textinput(&event);
+				break;
+			case SDL_KEYDOWN:
+				handle_keypress(&event);
+				break;
+			case SDL_WINDOWEVENT:
+				handle_window(&event);
+				break;
 		}
-		return 0;
 	}
+	SDL_UnlockMutex(mutex);
+	return 0;
+}
 
 int
 read_tty() {

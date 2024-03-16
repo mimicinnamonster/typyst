@@ -2003,8 +2003,8 @@ tputc(Rune u)
 		len = utf8encode(u, c);
 		if (!control)
 		{
-			width = getglyphwidth(u);
-			//width = 1;
+			//width = getglyphwidth(u); // TODO: this calls SDL renderer stuff so it can't be running in a thread and all pty stuff is in a thread
+			width = 1;
 		}
 	}
 

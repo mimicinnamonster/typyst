@@ -68,7 +68,7 @@ typedef struct {
 	SDL_Texture **cache;
 	int *cache_widths;
 	int *cache_heights;
-	int widths[MAXGLYPHS];
+	int *widths;
 	struct FontSetStruct *fontset;
 } Font;
 
