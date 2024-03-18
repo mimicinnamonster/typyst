@@ -705,11 +705,20 @@ render_glyphs()
 				printf("shrinking %s %d\n", text, g.u);
 				#endif
 
-				float nwr = 1/((float)f->width/(float)width);
-				float nhr = 1/((float)f->height/(float)win.ch);
-				float scale = MIN(nwr, nhr);
-				//SDL_Surface *shrunk = shrinkSurface(fsur, scale, scale);
-				SDL_Surface *shrunk = zoomSurface(fsur, scale, scale, SMOOTHING_OFF);
+				int nwr = f->width/width;
+				int nhr = f->height/win.ch;
+				int scale = MAX(1, MIN(nwr, nhr));
+				SDL_Surface *shrunk = shrinkSurface(fsur, scale, scale);
+
+				if (shrunk->w != width) {
+					float nwr = 1.0/((float)shrunk->w/(float)width);
+					float nhr = 1.0/((float)shrunk->h/(float)win.ch);
+					float scale = MIN(nwr, nhr);
+					SDL_Surface *temp = zoomSurface(shrunk, scale, scale, SMOOTHING_ON);
+					SDL_FreeSurface(shrunk);
+					shrunk = temp;
+				}
+
 				SDL_FreeSurface(fsur);
 				fsur = shrunk;
 			}
@@ -784,6 +793,10 @@ render_glyphs()
 			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
 			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
 		} else {
+			#ifdef DEBUG
+			printf("rendering not atlasable glyph %d: %s\n", g.u, text);
+			#endif
+
 			SDL_SetTextureColorMod(ftxt, fg.r, fg.g, fg.b);
 			SDL_RenderCopy(win.rnd, ftxt, 0, &ftxt_rect);
 		}
