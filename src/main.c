@@ -705,10 +705,11 @@ render_glyphs()
 				printf("shrinking %s %d\n", text, g.u);
 				#endif
 
-				int nw = f->width/width;
-				int nh = f->height/win.ch;
-				int scale = MAX(nw, nh);
-				SDL_Surface *shrunk = shrinkSurface(fsur, scale, scale);
+				float nwr = 1/((float)f->width/(float)width);
+				float nhr = 1/((float)f->height/(float)win.ch);
+				float scale = MIN(nwr, nhr);
+				//SDL_Surface *shrunk = shrinkSurface(fsur, scale, scale);
+				SDL_Surface *shrunk = zoomSurface(fsur, scale, scale, SMOOTHING_OFF);
 				SDL_FreeSurface(fsur);
 				fsur = shrunk;
 			}

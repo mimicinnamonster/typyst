@@ -56,3 +56,4 @@ printf "glyph: %s code point: %x\n" ∈ \'∈
 printf "glyph: %s code point: %x\n" ⚠ \'⚠
 printf "glyph: %s code point: %x\n" ⌘ \'⌘
 printf "glyph: %s code point: %x\n" ┐ \'┐
+printf "glyph: %s code point %x\n" 🌍 \'🌍

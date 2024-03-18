@@ -34,9 +34,11 @@ all: options $(EXE)
 
 options:
 	@echo build options:
-	@echo "CFLAGS  = $(CC_CFLAGS)"
-	@echo "LDFLAGS = $(CC_LDFLAGS)"
-	@echo "CC      = $(CC)"
+	@echo "CFLAGS     = $(CFLAGS)"
+	@echo "LDFLAGS    = $(LDFLAGS)"
+	@echo "CC_CFLAGS  = $(CC_CFLAGS)"
+	@echo "CC_LDFLAGS = $(CC_LDFLAGS)"
+	@echo "CC         = $(CC)"
 
 build_dir:
 	mkdir -p $(BUILD_DIR)
