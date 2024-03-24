@@ -17,7 +17,7 @@ LIBS = -lutil `$(PKG_CONFIG) --libs $(PKGCONF_DEPS)` #-lg
 # LIBS = -L../SDL/build/build/ -L../SDL_ttf/build/ -L../SDL_gfx/ -lutil -lfontconfig -lfreetype -lSDL2_ttf -lSDL2_gfx -lSDL2
 EXE = $(BUILD_DIR)/$(NAME)
 
-BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic -Werror
+BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic # -Werror
 # BASE_LDFLAGS = -Wl,-rpath,\$$ORIGIN
 BASE_LDFLAGS =
 

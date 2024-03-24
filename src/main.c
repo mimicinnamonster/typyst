@@ -12,7 +12,6 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_thread.h>
-//# include <SDL_rotozoom.h>
 #include <SDL2/SDL2_rotozoom.h>
 
 
@@ -20,6 +19,7 @@
 #include "arg.h"
 #include "main.h"
 #include "config.h"
+#include "cache.h"
 
 inline ushort sixd_to_16bit(int);
 void drawglyph(Glyph, int, int);
@@ -50,7 +50,9 @@ SDL_Texture **tx_anim;
 int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
-SDL_mutex* mutex;
+SDL_mutex *mutex;
+SDL_Texture *glyphcache;
+Geometry geo;
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 
@@ -87,9 +89,7 @@ resize(int width, int height)
 	printf("width: %d, height: %d, win.cw: %d, win.ch: %d, cols: %d, rows: %d\n", width, height, win.cw, win.ch, cols, rows);
 	#endif
 
-	for (int i=0; i<dc.fontsetlen; i++) {
-		init_geometry(&(dc.fontsets[i].geo));
-	}
+	init_geometry(&geo);
 
 	//SDL_PIXELFORMAT_BGRA32
 	win.txt_glyphs = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
@@ -300,7 +300,7 @@ loadfontset(FcPattern *pattern)
 		fs->ibfont.fontset = fs;
 	}
 
-	init_geometry(&(fontset->geo));
+	init_geometry(&geo);
 
 	return 1;
 }
@@ -367,14 +367,16 @@ init()
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
 
-
 	win.mode = MODE_NUMLOCK;
 
 	if (opt_anim)
 		initanim(opt_anim);
 
+	glyphcache = cache_init(win.rnd, win.cw, win.ch);
+
 	SDL_EnableScreenSaver();
 	SDL_ShowWindow(win.wnd);
+
 }
 
 Font *
@@ -600,10 +602,24 @@ render_glyphs()
 	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
 	SDL_RenderClear(win.rnd);
 
-	for (int id = cols*rows-1; id >= 0; id--) {
+	for (int id = 0; id<cols*rows; id++) {
 		int y = id/cols;
 		int x = id - y * cols;
 		Glyph g = win.glyphs[id];
+
+		if (!g.u)
+			continue;
+
+		// sometimes we have some other character under the second cell
+		// of a wide glyph, so lets check if previous glyph was wide
+		// and don't render this glyph in that case
+		if (x > 0 && !(g.mode & ATTR_WIDE)) {
+			int prev_x = MAX(x-1, 0);
+			int prev_id = y * cols + prev_x;
+			if (win.glyphs[prev_id].mode & ATTR_WIDE) {
+				continue;
+			}
+		}
 
 		Font *f = selectglyphfont(g);
 		if (!f) {
@@ -624,23 +640,9 @@ render_glyphs()
 		FontSet *fs = f->fontset;
 		assert(fs);
 
-		// dynamically create atlas if it wasn't created yet
-		if (!fs->atlas) {
-			int w = FONTATLASSIZE * win.cw * 2;
-			int h = win.ch * 4;
-			fs->atlas = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, w, h);
-			assert(fs->atlas);
-			SDL_SetTextureBlendMode(fs->atlas, SDL_BLENDMODE_BLEND);
-			#ifdef DEBUG
-			printf("creating atlas for fontset %s: %d x %d\n", fs->font.filepath, w, h);
-			#endif
-		}
-		assert(fs->atlas);
-
 		int charlen = ((g.mode & ATTR_WIDE) ? 2 : 1);
 		int width = win.cw * charlen;
 
-		SDL_Texture *ftxt = 0;
 		SDL_Rect txt_rect = {winx, winy, width, win.ch};
 
 		/*
@@ -655,26 +657,6 @@ render_glyphs()
 			SDL_RenderFillRect(win.rnd, &txt_rect);
 		}
 
-		for (int i=0; i<dc.fontsetlen; i++) {
-			FontSet *fs = &dc.fontsets[i];
-			for (int j=0; j<charlen; j++) {
-				int no2 = no + j*6;
-				fs->geo.verts[no2+0].tex_coord = (SDL_FPoint){0, 0};
-				fs->geo.verts[no2+1].tex_coord = (SDL_FPoint){0, 0};
-				fs->geo.verts[no2+2].tex_coord = (SDL_FPoint){0, 0};
-				fs->geo.verts[no2+3].tex_coord = (SDL_FPoint){0, 0};
-				fs->geo.verts[no2+4].tex_coord = (SDL_FPoint){0, 0};
-				fs->geo.verts[no2+5].tex_coord = (SDL_FPoint){0, 0};
-			}
-		}
-
-		if (!g.u)
-			continue;
-
-		if (g.u < FONTCACHESIZE && f->cache[g.u]) {
-			ftxt = f->cache[g.u];
-		}
-
 		int font_type = 0;
 		if (g.mode & ATTR_ITALIC && g.mode & ATTR_BOLD) {
 			font_type = 3;
@@ -684,17 +666,13 @@ render_glyphs()
 			font_type = 1;
 		}
 
-		SDL_Rect ftxt_rect = txt_rect;
-
 		char text[8] = {0};
 		utf8encode(g.u, text);
 
-		if (ftxt) {
-			ftxt_rect.w = f->cache_widths[g.u];
-			ftxt_rect.h = f->cache_heights[g.u];
-		} else {
+		int cache_pos = -1;
+		if ((cache_pos = cache_get(g)) == -1) {
 			#ifdef DEBUG
-			printf("producing glyph %s %d\n", text, g.u);
+			// printf("producing glyph %s %d\n", text, g.u);
 			#endif
 
 			SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
@@ -723,96 +701,53 @@ render_glyphs()
 				fsur = shrunk;
 			}
 
+
 			#ifdef DEBUG
-			printf("font texture size: %d x %d\n", fsur->w, fsur->h);
+			// printf("font texture size: %d x %d\n", fsur->w, fsur->h);
 			#endif
 
-			ftxt = SDL_CreateTextureFromSurface(win.rnd, fsur);
-
-			assert(f);
-			assert(f->cache);
-
-			int is_cached = g.u < FONTCACHESIZE && f->cache[g.u] != 0;
-
-			if (g.u < FONTATLASSIZE && !is_cached) {
-				SDL_Rect atlasrect = {
-					g.u * win.cw * 2,
-					font_type * win.ch,
-					win.cw,
-					win.ch
-				};
-				#ifdef DEBUG
-				printf("atlasing glyph %lc (%d) at pos: %d %d\n", g.u, g.u, atlasrect.x, atlasrect.y);
-				#endif
-				SDL_UpdateTexture(fs->atlas, &atlasrect, fsur->pixels, fsur->pitch);
-			}
-
-			if (g.u < FONTCACHESIZE && !is_cached) {
-				#ifdef DEBUG
-				printf("caching glyph %lc\n", g.u);
-				#endif
-				f->cache[g.u] = ftxt;
-				f->cache_widths[g.u] = fsur->w;
-				f->cache_heights[g.u] = fsur->h;
-			}
-
-			ftxt_rect.w = fsur->w;
-			ftxt_rect.h = fsur->h;
+			cache_pos = cache_set(g, fsur);
 			SDL_FreeSurface(fsur);
 		}
 
-		// center
-		ftxt_rect.x += (width - ftxt_rect.w) / 2;
-		ftxt_rect.y += (win.ch - ftxt_rect.h) / 2;
-
 		// render
-		fs->geo.verts[no+0].color = fg;
-		fs->geo.verts[no+1].color = fg;
-		fs->geo.verts[no+2].color = fg;
-		fs->geo.verts[no+3].color = fg;
-		fs->geo.verts[no+4].color = fg;
-		fs->geo.verts[no+5].color = fg;
-
 		int glyph_width = getglyphwidth(g.u);
-		if (g.u < FONTATLASSIZE) {
-			float atlas_step = 1.0 / FONTATLASSIZE;
-			float atlas_offset = atlas_step * g.u;
-			int glyph_width_factor = 2 * (1 / glyph_width);
-			float x1 = atlas_offset;
-			float x2 = x1 + atlas_step / glyph_width_factor;
+		//int glyph_width_factor = 2 * (1.0 / glyph_width);
 
-			float atlas_hstep = 1.0 / 4;
-			float atlas_hoffset = atlas_hstep * font_type;
-			float y1 = atlas_hoffset;
-			float y2 = y1 + atlas_hstep;
+		float atlas_step = 1.0 / CACHE_MAX;
+		float atlas_offset = atlas_step * cache_pos;
+		float x1 = atlas_offset;
+		float x2 = x1 + atlas_step / 2;
 
-			fs->geo.verts[no+0].tex_coord = (SDL_FPoint){x1, y1};
-			fs->geo.verts[no+1].tex_coord = (SDL_FPoint){x2, y1};
-			fs->geo.verts[no+2].tex_coord = (SDL_FPoint){x1, y2};
-			fs->geo.verts[no+3].tex_coord = (SDL_FPoint){x1, y2};
-			fs->geo.verts[no+4].tex_coord = (SDL_FPoint){x2, y2};
-			fs->geo.verts[no+5].tex_coord = (SDL_FPoint){x2, y1};
-		} else {
-			#ifdef DEBUG
-			printf("rendering not atlasable glyph %d: %s\n", g.u, text);
-			#endif
+		float atlas_hstep = 1.0 / 4;
+		float atlas_hoffset = atlas_hstep * font_type;
+		float y1 = atlas_hoffset;
+		float y2 = y1 + atlas_hstep;
 
-			SDL_SetTextureColorMod(ftxt, fg.r, fg.g, fg.b);
-			SDL_RenderCopy(win.rnd, ftxt, 0, &ftxt_rect);
-		}
+		for (int i = 0; i < glyph_width; i++) {
+			geo.verts[no+0+i*6].color = fg;
+			geo.verts[no+1+i*6].color = fg;
+			geo.verts[no+2+i*6].color = fg;
+			geo.verts[no+3+i*6].color = fg;
+			geo.verts[no+4+i*6].color = fg;
+			geo.verts[no+5+i*6].color = fg;
 
-		if (g.u >= FONTCACHESIZE) {
-			SDL_DestroyTexture(ftxt);
+			float offset = atlas_step / 2 * i;
+			geo.verts[no+0+i*6].tex_coord = (SDL_FPoint){x1 + offset, y1};
+			geo.verts[no+1+i*6].tex_coord = (SDL_FPoint){x2 + offset, y1};
+			geo.verts[no+2+i*6].tex_coord = (SDL_FPoint){x1 + offset, y2};
+			geo.verts[no+3+i*6].tex_coord = (SDL_FPoint){x1 + offset, y2};
+			geo.verts[no+4+i*6].tex_coord = (SDL_FPoint){x2 + offset, y2};
+			geo.verts[no+5+i*6].tex_coord = (SDL_FPoint){x2 + offset, y1};
 		}
 	}
 
 	int c = 6 * cols * rows;
-	for (int dci=0; dci<dc.fontsetlen; dci++) {
-		FontSet *fs = &dc.fontsets[dci];
-		if (fs->atlas){
-			SDL_RenderGeometry(win.rnd, fs->atlas, fs->geo.verts, c, fs->geo.idxs, c);
-		}
-	}
+	SDL_RenderGeometry(win.rnd, glyphcache, geo.verts, c, geo.idxs, c);
+
+	#ifdef DEBUG
+	//save_texture("dump.bmp", win.rnd, glyphcache);
+	#endif
 
 	win.updated = 0;
 	return 1;
@@ -1249,6 +1184,7 @@ randombullshitgo() {
 int
 main(int argc, char *argv[])
 {
+
 	setlocale(LC_ALL, "C.UTF-8");
 
 	ARGBEGIN {
