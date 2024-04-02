@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
 Name=typyst
-Exec=typyst bash -c "tmux attach || tmux new; until ! tmux attach; do :; done"
+Exec=/home/michal/Projects/typyst/_build/typyst bash -c "tmux attach || tmux new; until ! tmux attach; do :; done"
 Icon=utilities-terminal
 Categories=System;TerminalEmulator;

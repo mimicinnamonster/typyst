@@ -146,8 +146,11 @@ int cache_set(Glyph g, SDL_Surface *src) {
 	SDL_UpdateTexture(gc.txt, &r, src->pixels, src->pitch);
 
 	/*
-	save_texture("dump.bmp", gc.rnd, gc.txt);
+	//int counter;
+	char filename[50] = {0};
+	sprintf(filename, "dump_%d_%d.bmp", counter++, g.u);
+	save_texture(filename, gc.rnd, gc.txt);
 	*/
 
-	return gc.head;
+	return gc.items[g.u].idx;
 }

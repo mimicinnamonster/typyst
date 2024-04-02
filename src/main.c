@@ -703,7 +703,11 @@ render_glyphs()
 
 
 			#ifdef DEBUG
-			// printf("font texture size: %d x %d\n", fsur->w, fsur->h);
+			printf("font texture size: %d x %d\n", fsur->w, fsur->h);
+			#endif
+
+			#ifdef DEBUG
+			printf("caching %s %d\n", text, g.u);
 			#endif
 
 			cache_pos = cache_set(g, fsur);
