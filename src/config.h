@@ -47,7 +47,7 @@ static const RenderColor colorname[] = {
 	{ .red = 170, .green = 0, .blue = 0, .alpha = 255 },
 	{ .red = 0, .green = 170, .blue = 0, .alpha = 255 },
 	{ .red = 170, .green = 85, .blue = 0, .alpha = 255 },
-	{ .red = 0, .green = 0, .blue = 170, .alpha = 255 },
+	{ .red = 30, .green = 50, .blue = 170, .alpha = 255 },
 	{ .red = 170, .green = 0, .blue = 170, .alpha = 255 },
 	{ .red = 0, .green = 170, .blue = 170, .alpha = 255 },
 	{ .red = 170, .green = 170, .blue = 170, .alpha = 255 },
