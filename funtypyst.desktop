@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=funtypyst
-Exec=funtypyst bash -c 'tmux attach || tmux new; until ! tmux attach; do :; done'
+Exec=funtypyst bash -c 'clear; read -t 0.1; tmux attach || tmux new; until ! tmux attach; do :; done'
 Icon=gnome-terminal
 Icon=utilities-terminal
 Terminal=false

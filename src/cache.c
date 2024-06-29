@@ -44,11 +44,23 @@ SDL_Texture *cache_init(SDL_Renderer *rnd, int glyph_width, int glyph_height) {
 	gc.gh = glyph_height;
 	gc.head = CACHE_MAX-1;
 
+	if (gc.txt) {
+		SDL_DestroyTexture(gc.txt);
+	}
+
 	assert(gc.txt = SDL_CreateTexture(gc.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, CACHE_MAX * 2 * gc.gw, 4 * gc.gh));
 	SDL_SetTextureBlendMode(gc.txt, SDL_BLENDMODE_BLEND);
 
+	if (gc.items) {
+		free(gc.items);
+	}
+
 	assert(gc.items = calloc(MAXGLYPHS+1, sizeof(*gc.items)));
 	memset(gc.items, 0, (MAXGLYPHS+1) * sizeof(*gc.items));
+
+	if (gc.lru) {
+		free(gc.lru);
+	}
 
 	assert(gc.lru = calloc(CACHE_MAX, sizeof(*gc.lru)));
 	memset(gc.lru, 0, CACHE_MAX * sizeof(*gc.lru));

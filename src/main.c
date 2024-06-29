@@ -31,6 +31,8 @@ int loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
 void fps();
 int read_events();
+void unloadfont(Font *f);
+void resizefont();
 
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE (1 << 16)
@@ -45,13 +47,13 @@ static unsigned int opt_fps = 30;
 TermWindow win;
 Animation anim;
 DrawingContext dc;
-double usedfontsize;
+double usedfontsize = 18;
 SDL_Texture **tx_anim;
 int tx_anim_len;
 unsigned int lasttick;
 unsigned int framecount;
 SDL_mutex *mutex;
-SDL_Texture *glyphcache;
+SDL_Texture *glyphcache = 0;
 Geometry geo;
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
@@ -92,6 +94,7 @@ resize(int width, int height)
 	init_geometry(&geo);
 
 	//SDL_PIXELFORMAT_BGRA32
+	// TODO: destroy old textures
 	win.txt_glyphs = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	win.txt_background = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
@@ -215,8 +218,6 @@ loadfont(Font *f, FcPattern *pattern)
 	// TODO: hinting
 	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
 
-	f->set = 0;
-
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
 
@@ -240,9 +241,26 @@ loadfont(Font *f, FcPattern *pattern)
 	return 1;
 }
 
+void
+unloadfont(Font *f)
+{
+	//free(f->filepath);
+	FcPatternDestroy(f->pattern);
+	FcPatternDestroy(f->match);
+	//free(f->charset);
+	TTF_CloseFont(f->ttf);
+	free(f->cache);
+	free(f->cache_widths);
+	free(f->cache_heights);
+	free(f->widths);
+}
+
 FcPattern *createfontpattern(const char *fontstr)
 {
 	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);
+	FcPatternDel(pattern, FC_PIXEL_SIZE);
+	FcValue v = (FcValue){ .type = FcTypeDouble, .u = {.d = usedfontsize }};
+	assert(FcPatternAdd(pattern, FC_PIXEL_SIZE, v, 1));
 	return pattern;
 }
 
@@ -253,6 +271,10 @@ loadfontset(FcPattern *pattern)
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
 
+	#ifdef DEBUG
+	printf("number of fontsets: %d\n", dc.fontsetlen);
+	#endif
+
 	double fontval;
 
 	if (FcPatternGetDouble(pattern, FC_PIXEL_SIZE, 0, &fontval) == FcResultMatch) {
@@ -260,6 +282,7 @@ loadfontset(FcPattern *pattern)
 	} else if (FcPatternGetDouble(pattern, FC_SIZE, 0, &fontval) == FcResultMatch) {
 		usedfontsize = -1;
 	} else {
+		assert(0);
 		FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
 		usedfontsize = 12;
 	}
@@ -300,8 +323,6 @@ loadfontset(FcPattern *pattern)
 		fs->ibfont.fontset = fs;
 	}
 
-	init_geometry(&geo);
-
 	return 1;
 }
 
@@ -312,12 +333,69 @@ init()
 
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
+
 	SDL_StartTextInput();
 
-	// loadfontset calls init_geometry which needs win.cw and win.ch
-	// so lets fill it with something so it doesn't SIGFPE
-	win.cw = 1;
-	win.ch = 1;
+
+	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+	ttyresize(cols, rows); // send terminal size to the terminal
+
+	#ifdef DEBUG
+	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
+	#endif
+
+	assert(!SDL_Init(SDL_INIT_VIDEO));
+
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
+	loadcols();
+	resizefont();
+
+	win.w = cols * win.cw;
+	win.h = rows * win.ch;
+
+	if (opt_fullscreen) {
+		SDL_DisplayMode DM;
+		SDL_GetCurrentDisplayMode(0, &DM);
+		win.w = DM.w;
+		win.h = DM.h;
+	}
+
+	resize(win.w, win.h);
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+
+	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, win.w, win.h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED);
+	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
+	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
+
+	win.mode = MODE_NUMLOCK;
+
+	if (opt_anim)
+		initanim(opt_anim);
+
+	SDL_EnableScreenSaver();
+	SDL_ShowWindow(win.wnd);
+}
+
+
+void
+resizefont()
+{
+	if (dc.fontsetlen) {
+		for (int i=0; i<dc.fontsetlen; i++) {
+			FontSet *fs = &dc.fontsets[i];
+			unloadfont(&fs->font);
+			unloadfont(&fs->bfont);
+			unloadfont(&fs->ifont);
+			unloadfont(&fs->ibfont);
+		}
+		free(dc.fontsets);
+		dc.fontsetlen = 0;
+		dc.fontsets = 0;
+	}
 
 	FcPattern *pattern = createfontpattern(font);
 	assert(pattern);
@@ -333,50 +411,6 @@ init()
 	fsres = loadfontset(pattern);
 	assert(fsres);
 	FcPatternDestroy(pattern);
-
-	loadcols();
-
-	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-	ttyresize(cols, rows); // send terminal size to the terminal
-
-	#ifdef DEBUG
-	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
-	#endif
-
-	assert(!SDL_Init(SDL_INIT_VIDEO));
-
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-
-	int w = cols * win.cw;
-	int h = rows * win.ch;
-
-	if (opt_fullscreen) {
-		SDL_DisplayMode DM;
-		SDL_GetCurrentDisplayMode(0, &DM);
-		w = DM.w;
-		h = DM.h;
-	}
-
-	resize(w, h);
-
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-
-	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED);
-	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
-	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
-
-	win.mode = MODE_NUMLOCK;
-
-	if (opt_anim)
-		initanim(opt_anim);
-
-	glyphcache = cache_init(win.rnd, win.cw, win.ch);
-
-	SDL_EnableScreenSaver();
-	SDL_ShowWindow(win.wnd);
-
 }
 
 Font *
@@ -598,6 +632,10 @@ render_glyphs()
 {
 	if (!win.updated)
 		return 0;
+
+	if (!glyphcache) {
+		glyphcache = cache_init(win.rnd, win.cw, win.ch);
+	}
 
 	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
 	SDL_RenderClear(win.rnd);
@@ -1014,6 +1052,28 @@ handle_keypress(SDL_Event *ev)
 			buf[0] = '\033';
 			keysz = 2;
 		}
+	}
+
+	if (isctrl && isshift && buf[0] == '=') {
+		usedfontsize++;
+		#ifdef DEBUG
+		printf("fontsize increased: %f\n", usedfontsize);
+		#endif
+		resizefont();
+		resize(win.w, win.h);
+		glyphcache = 0;
+		return;
+	}
+
+	if (isctrl && !isshift && buf[0] == '-') {
+		usedfontsize--;
+		#ifdef DEBUG
+		printf("fontsize decreased: %f\n", usedfontsize);
+		#endif
+		resizefont();
+		resize(win.w, win.h);
+		glyphcache = 0;
+		return;
 	}
 
 	#ifdef DEBUG
