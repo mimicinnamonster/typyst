@@ -340,9 +340,7 @@ init()
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
 	ttyresize(cols, rows); // send terminal size to the terminal
 
-	#ifdef DEBUG
-	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
-	#endif
+
 
 	assert(!SDL_Init(SDL_INIT_VIDEO));
 
