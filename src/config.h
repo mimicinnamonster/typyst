@@ -42,28 +42,29 @@ unsigned int tabspaces = 8;
 /* Terminal colors (16 first used in escape sequence) */
 // st changes colors orders 2,3 with 4,5
 static const RenderColor colorname[] = {
-	/* 8 normal colors */
-	{ .red = 0, .green = 0, .blue = 0, .alpha = 255 },
-	{ .red = 170, .green = 0, .blue = 0, .alpha = 255 },
-	{ .red = 0, .green = 170, .blue = 0, .alpha = 255 },
-	{ .red = 170, .green = 85, .blue = 0, .alpha = 255 },
-	{ .red = 30, .green = 50, .blue = 170, .alpha = 255 },
-	{ .red = 170, .green = 0, .blue = 170, .alpha = 255 },
-	{ .red = 0, .green = 170, .blue = 170, .alpha = 255 },
-	{ .red = 170, .green = 170, .blue = 170, .alpha = 255 },
+	/* 8 normal colors — Ghostty palette */
+	{ .red = 85, .green = 85, .blue = 85, .alpha = 255 },         /*  0: #555555 */
+	{ .red = 204, .green = 102, .blue = 102, .alpha = 255 },      /*  1: #cc6666 */
+	{ .red = 181, .green = 189, .blue = 104, .alpha = 255 },      /*  2: #b5bd68 */
+	{ .red = 240, .green = 198, .blue = 116, .alpha = 255 },      /*  3: #f0c674 */
+	{ .red = 153, .green = 221, .blue = 255, .alpha = 255 },      /*  4: #99ddff */
+	{ .red = 178, .green = 148, .blue = 187, .alpha = 255 },      /*  5: #b294bb */
+	{ .red = 138, .green = 190, .blue = 183, .alpha = 255 },      /*  6: #8abeb7 */
+	{ .red = 197, .green = 200, .blue = 198, .alpha = 255 },      /*  7: #c5c8c6 */
 
-	/* 8 bright colors */
-	{ .red = 85, .green = 85, .blue = 85, .alpha = 255 },
-	{ .red = 255, .green = 85, .blue = 85, .alpha = 255 },
-	{ .red = 85, .green = 255, .blue = 85, .alpha = 255 },
-	{ .red = 255, .green = 255, .blue = 85, .alpha = 255 },
-	{ .red = 85, .green = 85, .blue = 255, .alpha = 255 },
-	{ .red = 255, .green = 85, .blue = 255, .alpha = 255 },
-	{ .red = 85, .green = 255, .blue = 255, .alpha = 255 },
-	{ .red = 255, .green = 255, .blue = 255, .alpha = 255 },
+	/* 8 bright colors — Ghostty palette */
+	{ .red = 170, .green = 170, .blue = 170, .alpha = 255 },      /*  8: #aaaaaa */
+	{ .red = 213, .green = 78, .blue = 83, .alpha = 255 },        /*  9: #d54e53 */
+	{ .red = 185, .green = 202, .blue = 74, .alpha = 255 },       /* 10: #b9ca4a */
+	{ .red = 231, .green = 197, .blue = 71, .alpha = 255 },       /* 11: #e7c547 */
+	{ .red = 204, .green = 238, .blue = 255, .alpha = 255 },      /* 12: #cceeff */
+	{ .red = 195, .green = 151, .blue = 216, .alpha = 255 },      /* 13: #c397d8 */
+	{ .red = 112, .green = 192, .blue = 177, .alpha = 255 },      /* 14: #70c0b1 */
+	{ .red = 234, .green = 234, .blue = 234, .alpha = 255 },      /* 15: #eaeaea */
 
 	/* more colors can be added after 255 to use with DefaultXX */
 	[255] = {0},
+	[256] = {0, 0, 0, 255},  /* pure black for background (matches Ghostty bg=#000000) */
 
 };
 
@@ -73,7 +74,7 @@ static const RenderColor colorname[] = {
  * foreground, background, cursor, reverse cursor
  */
 unsigned int defaultfg = 7;
-unsigned int defaultbg = 0;
+unsigned int defaultbg = 256;
 
 // TODO: remove this
 //static unsigned int defaultrcs = 257;
