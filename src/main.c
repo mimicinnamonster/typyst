@@ -841,6 +841,8 @@ render()
 	int glyp = render_glyphs();
 
 	if (glyp || anim) {
+		framecount++;
+
 		if (anim) {
 			SDL_SetRenderTarget(win.rnd, 0);
 			SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
@@ -1219,8 +1221,6 @@ fps()
 		lasttick = currtick;
 		return;
 	}
-
-	framecount++;
 
 	unsigned int dt = currtick - lasttick;
 
