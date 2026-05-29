@@ -886,13 +886,7 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 void
 settitle(char *p)
 {
-	char title[100] = {0};
-	if (p == 0 || p[0] == 0) {
-		SDL_SetWindowTitle(win.wnd, "typyst");
-	} else {
-		snprintf(title, 100, "typyst: %s", p);
-		SDL_SetWindowTitle(win.wnd, title);
-	}
+	(void)p;
 }
 
 int
