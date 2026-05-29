@@ -30,6 +30,8 @@
  #include <libutil.h>
 #endif
 
+int syncd_output = 0; /* DEC private mode 2026 — Synchronized Output */
+
 /* Arbitrary sizes */
 #define UTF_INVALID   0xFFFD
 #define UTF_SIZ       4
@@ -1289,11 +1291,20 @@ tsetmode(int priv, int set, const int *args, int narg)
 			case 1015: /* urxvt mangled mouse mode; incompatible
 				      and can be mistaken for other control
 				      codes. */
+			case 2026: /* Synchronized Output */
+				syncd_output = set;
+				if (!set)
+					redraw();
+				break;
+			case 2031: /* COLOR_PALETTE_UPDATES (IGNORED) */
+			case 7727: /* APPLICATION_ESCAPE_KEY (IGNORED) */
 				break;
 			default:
+#ifdef DEBUG
 				fprintf(stderr,
 					"erresc: unknown private set/reset mode %d\n",
 					*args);
+#endif
 				break;
 			}
 		} else {
@@ -1313,9 +1324,11 @@ tsetmode(int priv, int set, const int *args, int narg)
 				MODBIT(term.mode, set, MODE_CRLF);
 				break;
 			default:
+#ifdef DEBUG
 				fprintf(stderr,
 					"erresc: unknown set/reset mode %d\n",
 					*args);
+#endif
 				break;
 			}
 		}
@@ -1331,9 +1344,10 @@ csihandle(void)
 	switch (csiescseq.mode[0]) {
 	default:
 	unknown:
+#ifdef DEBUG
 		fprintf(stderr, "erresc: unknown csi ");
 		csidump();
-		/* die(""); */
+#endif
 		break;
 	case '@': /* ICH -- Insert <n> blank char */
 		DEFAULT(csiescseq.arg[0], 1);
@@ -1369,6 +1383,17 @@ csihandle(void)
 	case 'c': /* DA -- Device Attributes */
 		if (csiescseq.arg[0] == 0)
 			ttywrite(vtiden, strlen(vtiden), 0);
+		break;
+	case '>': /* Secondary DA */
+		if (csiescseq.mode[1] == 'c') {
+			/* Secondary Device Attributes (DA2) */
+			char resp[32];
+			int rlen = snprintf(resp, sizeof(resp), "\033[>0;0;0c");
+			ttywrite(resp, rlen, 0);
+		}
+		/* other >-prefixed queries: silently ignored —
+		   not standard, responding with wrong format
+		   causes text leakage on screen */
 		break;
 	case 'b': /* REP -- if last char is printable print it <n> more times */
 		DEFAULT(csiescseq.arg[0], 1);
@@ -1582,6 +1607,21 @@ strhandle(void)
 			if (narg > 1)
 				settitle(strescseq.args[1]);
 			return;
+		case 9:  /* iTerm2 Mark */
+			return;
+		case 10: /* dynamic foreground color */
+		case 11: /* dynamic background color */
+			if (narg > 1 && strcmp(strescseq.args[1], "?") == 0) {
+				/* Query — respond with current color */
+				char resp[64];
+				int idx = (par == 10) ? defaultfg : defaultbg;
+				const RenderColor *c = &colorname[idx];
+				int rlen = snprintf(resp, sizeof(resp),
+					"\033]%d;rgb:%04x/%04x/%04x\033\\",
+					par, c->red * 257, c->green * 257, c->blue * 257);
+				ttywrite(resp, rlen, 0);
+			}
+			return;
 		case 4: /* color set */
 			if (narg < 3)
 				break;
@@ -1613,8 +1653,10 @@ strhandle(void)
 		return;
 	}
 
+#ifdef DEBUG
 	fprintf(stderr, "erresc: unknown str ");
 	strdump();
+#endif
 }
 
 void
@@ -1980,8 +2022,10 @@ eschandle(uchar ascii)
 			strhandle();
 		break;
 	default:
+#ifdef DEBUG
 		fprintf(stderr, "erresc: unknown sequence ESC 0x%02X '%c'\n",
 			(uchar) ascii, isprint(ascii)? ascii:'.');
+#endif
 		break;
 	}
 	return 1;
@@ -2264,6 +2308,9 @@ drawregion(int x1, int y1, int x2, int y2)
 void
 draw(void)
 {
+	if (syncd_output)
+		return;
+
 	int cx = term.c.x/*, ocx = term.ocx, ocy = term.ocy*/;
 
 	if (!startdraw())

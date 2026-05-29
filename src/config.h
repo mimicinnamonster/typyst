@@ -41,7 +41,7 @@ unsigned int tabspaces = 8;
 
 /* Terminal colors (16 first used in escape sequence) */
 // st changes colors orders 2,3 with 4,5
-static const RenderColor colorname[] = {
+const RenderColor colorname[] = {
 	/* 8 normal colors — Ghostty palette */
 	{ .red = 85, .green = 85, .blue = 85, .alpha = 255 },         /*  0: #555555 */
 	{ .red = 204, .green = 102, .blue = 102, .alpha = 255 },      /*  1: #cc6666 */

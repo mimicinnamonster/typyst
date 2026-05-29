@@ -134,6 +134,7 @@ void drawline(Line, int, int, int);
 void finishdraw(void);
 void loadcols(void);
 int setcolorname(int, const char *);
+extern const RenderColor colorname[];
 void settitle(char *);
 int setcursor(int);
 void settermmode(int, unsigned int);

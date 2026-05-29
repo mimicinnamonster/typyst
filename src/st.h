@@ -112,6 +112,8 @@ void *xmalloc(size_t);
 void *xrealloc(void *, size_t);
 char *xstrdup(const char *);
 
+extern int syncd_output; /* DEC private mode 2026 — Synchronized Output */
+
 /* config.h globals */
 extern char *utmp;
 extern char *scroll;
