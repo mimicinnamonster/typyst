@@ -1,5 +1,5 @@
 #include <time.h>
-#include <malloc.h>
+#include <stdio.h>
 
 #include <SDL.h>
 #include <SDL_thread.h>

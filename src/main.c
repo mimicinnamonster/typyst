@@ -999,7 +999,7 @@ handle_keypress(SDL_Event *ev)
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
-	int isalt = ev->key.keysym.mod & KMOD_LALT;
+	int isalt = ev->key.keysym.mod & KMOD_ALT;
 
 	int isfn = (ev->key.keysym.scancode >= SDL_SCANCODE_F1 && ev->key.keysym.scancode <= SDL_SCANCODE_F12);
 	int isprint = !(ev->key.keysym.sym & 1<<30);
@@ -1026,8 +1026,6 @@ handle_keypress(SDL_Event *ev)
 		if (!isprint || (!isspec && !isctrl && !isalt))
 			return;
 
-		if (!isctrl && isalt)
-			return;
 
 		if (isctrl && buf[0] == ' ') {
 			buf[0] = 0;
@@ -1097,14 +1095,12 @@ handle_textinput(SDL_Event *ev)
 	if (kb_state[SDL_SCANCODE_LCTRL])
 		return;
 
-	int isalt = kb_state[SDL_SCANCODE_LALT];
+	int isalt = kb_state[SDL_SCANCODE_LALT] || kb_state[SDL_SCANCODE_RALT];
 
-	char buf[8] = {isalt ? '\033' : 0};
-	int textlen = strlen(ev->text.text);
+	if (isalt)
+		return;  /* Alt+letter handled by handle_keypress instead */
 
-	memcpy(buf + (isalt ? 1 : 0), ev->text.text, MIN(textlen, 8 - (isalt ? 1 : 0)));
-
-	ttywrite(buf, strlen(buf), 1);
+	ttywrite(ev->text.text, strlen(ev->text.text), 1);
 
 	#ifdef DEBUG
 	printf("text input: %s\n", ev->text.text);

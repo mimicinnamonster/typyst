@@ -465,8 +465,8 @@ execsh(char *cmd, char **args)
 	_exit(1);
 }
 
-void
-sigchld(/*int a*/)
+static void
+sigchld(int a)
 {
 	int stat;
 	pid_t p;
