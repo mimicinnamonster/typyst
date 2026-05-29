@@ -1,5 +1,5 @@
 static char *font = "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true";
-static char *font2 = "NotoColorEmoji";
+static char *font2 = "Apple Color Emoji";
 float alpha = 0.8;
 
 static char *shell = "/bin/zsh";

@@ -188,6 +188,7 @@ loadfont(Font *f, FcPattern *pattern)
 {
 	char *filepath;
 	FcResult result;
+	int fontindex = 0;
 
 	FcPattern *duplicate = FcPatternDuplicate(pattern);
 	f->pattern = duplicate;
@@ -204,15 +205,16 @@ loadfont(Font *f, FcPattern *pattern)
 	}
 
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
+	FcPatternGetInteger(f->match, FC_INDEX, 0, &fontindex);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
 
 	f->filepath = filepath;
 
 	#ifdef DEBUG
-	printf("loading font file: %s, font size: %f\n", filepath, usedfontsize);
+	printf("loading font file: %s, font size: %f, index: %d\n", filepath, usedfontsize, fontindex);
 	#endif
 
-	f->ttf = TTF_OpenFont(filepath, usedfontsize);
+	f->ttf = TTF_OpenFontIndex(filepath, usedfontsize, fontindex);
 	if (!f->ttf) return 0;
 
 	// TODO: hinting
