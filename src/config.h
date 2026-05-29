@@ -2,7 +2,7 @@ static char *font = "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true";
 static char *font2 = "NotoColorEmoji";
 float alpha = 0.8;
 
-static char *shell = "/bin/sh";
+static char *shell = "/bin/zsh";
 
 char *utmp = NULL;
 

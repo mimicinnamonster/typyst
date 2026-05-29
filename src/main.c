@@ -982,6 +982,13 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
+	/* Cmd+Q — quit the application */
+	if ((ev->key.keysym.mod & KMOD_GUI) && ev->key.keysym.sym == SDLK_q) {
+		SDL_Event quit_event = { .type = SDL_QUIT };
+		SDL_PushEvent(&quit_event);
+		return;
+	}
+
 	char *kmapbuf = kmap((SDL_KeyboardEvent *)ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
@@ -1105,6 +1112,8 @@ handle_textinput(SDL_Event *ev)
 	#endif
 }
 
+static int quit_requested = 0;
+
 int
 read_events()
 {
@@ -1114,6 +1123,9 @@ read_events()
 	SDL_Event event;
 	while (SDL_PollEvent(&event)) {
 		switch(event.type) {
+			case SDL_QUIT:
+				quit_requested = 1;
+				break;
 			case SDL_TEXTINPUT:
 				handle_textinput(&event);
 				break;
@@ -1126,7 +1138,7 @@ read_events()
 		}
 	}
 	SDL_UnlockMutex(mutex);
-	return 0;
+	return quit_requested;
 }
 
 int
@@ -1287,9 +1299,10 @@ main(int argc, char *argv[])
 
 	unsigned int lastframe = 0;
 
-	while (1) {
+	while (!quit_requested) {
 		//randombullshitgo();
-		read_events();
+		if (read_events())
+			break;
 
 		unsigned int currframe = SDL_GetTicks();
 		unsigned int dt = currframe - lastframe;
