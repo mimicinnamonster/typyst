@@ -42,13 +42,30 @@ SDL_Texture *cache_init(SDL_Renderer *rnd, int glyph_width, int glyph_height) {
 	gc.rnd = rnd;
 	gc.gw = glyph_width;
 	gc.gh = glyph_height;
-	gc.head = CACHE_MAX-1;
+
+	/* Determine max cache slots based on GPU max texture size */
+	SDL_RendererInfo info;
+	SDL_GetRendererInfo(rnd, &info);
+	int max_tex_w = info.max_texture_width;
+	int slots_by_width = max_tex_w / (2 * gc.gw);
+	gc.max = slots_by_width;
+	if (gc.max > CACHE_MAX_MAX) gc.max = CACHE_MAX_MAX;
+	if (gc.max < CACHE_MAX_MIN) gc.max = CACHE_MAX_MIN;
+
+	gc.head = gc.max - 1;
 
 	if (gc.txt) {
 		SDL_DestroyTexture(gc.txt);
 	}
 
-	assert(gc.txt = SDL_CreateTexture(gc.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, CACHE_MAX * 2 * gc.gw, 4 * gc.gh));
+	int tex_w = gc.max * 2 * gc.gw;
+	int tex_h = 4 * gc.gh;
+
+#ifdef DEBUG
+	printf("cache_init: max=%d, tex=%dx%d (GPU max tex width: %d)\n", gc.max, tex_w, tex_h, max_tex_w);
+#endif
+
+	assert(gc.txt = SDL_CreateTexture(gc.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_STREAMING, tex_w, tex_h));
 	SDL_SetTextureBlendMode(gc.txt, SDL_BLENDMODE_BLEND);
 
 	if (gc.items) {
@@ -62,11 +79,11 @@ SDL_Texture *cache_init(SDL_Renderer *rnd, int glyph_width, int glyph_height) {
 		free(gc.lru);
 	}
 
-	assert(gc.lru = calloc(CACHE_MAX, sizeof(*gc.lru)));
-	memset(gc.lru, 0, CACHE_MAX * sizeof(*gc.lru));
+	assert(gc.lru = calloc(gc.max, sizeof(*gc.lru)));
+	memset(gc.lru, 0, gc.max * sizeof(*gc.lru));
 
 	#ifdef DEBUG
-	printf("glyph cache initalized. Hashmap: %d, queue: %d\n", MAXGLYPHS, CACHE_MAX);
+	printf("glyph cache initialized. Hashmap: %d, queue: %d\n", MAXGLYPHS, gc.max);
 	#endif
 
 	return gc.txt;
@@ -134,7 +151,7 @@ int cache_get(Glyph g) {
 int cache_set(Glyph g, SDL_Surface *src) {
 	assert(g.u <= MAXGLYPHS);
 
-	int next_head = (gc.head+1) % CACHE_MAX;
+	int next_head = (gc.head+1) % gc.max;
 
 	if (!gc.items[g.u].mode) {
 		int prev = gc.lru[next_head];

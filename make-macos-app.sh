@@ -93,9 +93,14 @@ if [ -f "$ICON_SRC" ]; then
     rm -rf "$ICONSET"
 fi
 
+# Copy to /Applications so Spotlight/Launchpad can find it
+rm -rf "/Applications/${APP_DIR}"
+cp -R "${APP_DIR}" "/Applications/${APP_DIR}"
+
 # Register with LaunchServices so open/Finder recognises the app
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "${APP_DIR}" &>/dev/null || true
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_DIR}" &>/dev/null || true
 
 echo "Created ${APP_DIR}"
-echo "You can now run:"
-echo "  open ${APP_DIR}"
+echo "Installed to /Applications/${APP_DIR}"
+echo "You can now find typyst in Spotlight"
+echo "Or run: open /Applications/${APP_DIR}"

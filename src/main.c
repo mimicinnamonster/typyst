@@ -29,7 +29,6 @@ int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
 int loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
-void fps();
 int read_events();
 void unloadfont(Font *f);
 void resizefont();
@@ -50,8 +49,7 @@ DrawingContext dc;
 double usedfontsize = 18;
 SDL_Texture **tx_anim;
 int tx_anim_len;
-unsigned int lasttick;
-unsigned int framecount;
+
 SDL_mutex *mutex;
 SDL_Texture *glyphcache = 0;
 Geometry geo;
@@ -217,8 +215,8 @@ loadfont(Font *f, FcPattern *pattern)
 	f->ttf = TTF_OpenFontIndex(filepath, usedfontsize, fontindex);
 	if (!f->ttf) return 0;
 
-	// TODO: hinting
-	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
+	TTF_SetFontHinting(f->ttf, TTF_HINTING_NORMAL);
+	TTF_SetFontOutline(f->ttf, 0);
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
@@ -338,11 +336,7 @@ init()
 
 	SDL_StartTextInput();
 
-
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-	ttyresize(cols, rows); // send terminal size to the terminal
-
-
 
 	assert(!SDL_Init(SDL_INIT_VIDEO));
 
@@ -354,22 +348,34 @@ init()
 	win.w = cols * win.cw;
 	win.h = rows * win.ch;
 
-	if (opt_fullscreen) {
-		SDL_DisplayMode DM;
-		SDL_GetCurrentDisplayMode(0, &DM);
-		win.w = DM.w;
-		win.h = DM.h;
-	}
-
-	resize(win.w, win.h);
-
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
 	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
 
-	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, win.w, win.h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED);
+	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, win.w, win.h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED|SDL_WINDOW_ALLOW_HIGHDPI);
 	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
 	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
+
+	/* Get actual drawable size and DPI scale factor */
+	int draw_w, draw_h, win_w, win_h;
+	SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+	SDL_GetWindowSize(win.wnd, &win_w, &win_h);
+	float dpi_scale = (float)draw_w / (float)win_w;
+
+	/* Reload fonts at scaled pixel size for HiDPI rendering */
+	usedfontsize *= dpi_scale;
+	resizefont();
+
+	if (opt_fullscreen) {
+		win.w = draw_w;
+		win.h = draw_h;
+	} else {
+		win.w = draw_w;
+		win.h = draw_h;
+	}
+
+	resize(win.w, win.h);
+	ttyresize(cols, rows);
 
 	win.mode = MODE_NUMLOCK;
 
@@ -756,7 +762,7 @@ render_glyphs()
 		int glyph_width = getglyphwidth(g.u);
 		//int glyph_width_factor = 2 * (1.0 / glyph_width);
 
-		float atlas_step = 1.0 / CACHE_MAX;
+		float atlas_step = 1.0 / gc.max;
 		float atlas_offset = atlas_step * cache_pos;
 		float x1 = atlas_offset;
 		float x2 = x1 + atlas_step / 2;
@@ -810,9 +816,12 @@ render_animation()
 	}
 
 	if (tx_anim_len > 0) {
-		SDL_SetRenderTarget(win.rnd, 0/*win.txt_background*/);
-
+		/* Render animation frame to background texture */
+		SDL_SetRenderTarget(win.rnd, win.txt_background);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_RenderClear(win.rnd);
 		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		/* Dark overlay for readability */
 		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
 		SDL_RenderFillRect(win.rnd, 0);
 
@@ -834,16 +843,18 @@ render()
 
 	int anim = render_animation();
 
-	if (opt_anim && anim){
+	/* Render glyphs directly to screen (no -a) or to glyph texture (with -a) */
+	if (opt_anim && anim) {
 		SDL_SetRenderTarget(win.rnd, win.txt_glyphs);
+	} else {
+		SDL_SetRenderTarget(win.rnd, 0);
 	}
 
 	int glyp = render_glyphs();
 
 	if (glyp || anim) {
-		framecount++;
-
 		if (anim) {
+			/* Composite: reset target to screen, draw background then glyphs on top */
 			SDL_SetRenderTarget(win.rnd, 0);
 			SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
 			SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
@@ -932,9 +943,12 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_CLOSE:
 			exit(0);
 			break;
-		case SDL_WINDOWEVENT_RESIZED:
-			resize(ev->window.data1, ev->window.data2);
+		case SDL_WINDOWEVENT_RESIZED: {
+			int draw_w, draw_h;
+			SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+			resize(draw_w, draw_h);
 			break;
+		}
 		case SDL_WINDOWEVENT_FOCUS_GAINED: {
 			win.lastfocus = ev->window.timestamp;
 			redraw();
@@ -1213,28 +1227,6 @@ usage(void)
 }
 
 void
-fps()
-{
-	unsigned int currtick = SDL_GetTicks();
-
-	if (!lasttick) {
-		lasttick = currtick;
-		return;
-	}
-
-	unsigned int dt = currtick - lasttick;
-
-	if (dt > 1000) {
-		char title[30] = {0};
-		snprintf(title, 30, "%d fps", framecount);
-		settitle(title);
-
-		framecount = 0;
-		lasttick = currtick;
-	}
-}
-
-void
 randombullshitgo() {
 	win.drawing = 1;
 			unsigned char r = rand() % 255;
@@ -1312,8 +1304,6 @@ main(int argc, char *argv[])
 		if (dt < 1000/opt_fps) {
 			SDL_Delay((1000/opt_fps)-dt);
 		}
-
-		fps();
 
 		render();
 
