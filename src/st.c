@@ -866,10 +866,7 @@ tnewline(int first_col)
 	int y = term.c.y;
 
 	if (y == term.bot) {
-		/* Stay at the bottom row instead of scrolling.  Prevents
-		 * framebuffer-style programs from losing one row per
-		 * frame when the last line ends with \n. */
-		y = term.bot;
+		tscrollup(term.top, 1);
 	} else {
 		y++;
 	}
@@ -1552,9 +1549,13 @@ csihandle(void)
 		}
 		break;
 	case 's': /* DECSC -- Save cursor position (ANSI.SYS) */
+		if (csiescseq.priv)
+			goto unknown;
 		tcursor(CURSOR_SAVE);
 		break;
 	case 'u': /* DECRC -- Restore cursor position (ANSI.SYS) */
+		if (csiescseq.priv)
+			goto unknown;
 		tcursor(CURSOR_LOAD);
 		break;
 	case ' ':

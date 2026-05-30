@@ -835,7 +835,8 @@ render(void)
 
 	if (win.should_draw) {
 		draw();
-		win.should_draw = 0;
+		if (!syncd_output)
+			win.should_draw = 0;
 	}
 
 	int anim = render_animation();
