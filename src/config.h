@@ -201,7 +201,10 @@ static Key key[] = {
 	{SDLK_RIGHT, 0xffffffff, "\033[C", 0, -1},
 	{SDLK_RIGHT, 0xffffffff, "\033OC", 0, +1},
 	{SDLK_TAB, KMOD_SHIFT, "\033[Z", 0, 0},
-	// {SDLK_RETURN, Mod1Mask, "\033\r", 0, 0},
+	// Modified Enter entries — Kitty keyboard protocol
+	{SDLK_RETURN, KMOD_ALT, "\033[13;3u", 0, 0},
+	{SDLK_RETURN, KMOD_SHIFT, "\033[13;2u", 0, 0},
+	{SDLK_RETURN, KMOD_CTRL, "\033[13;5u", 0, 0},
 	{SDLK_RETURN, 0xffffffff, "\r", 0, 0},
 	{SDLK_INSERT, KMOD_SHIFT, "\033[4l", -1, 0},
 	{SDLK_INSERT, KMOD_SHIFT, "\033[2;2~", +1, 0},
