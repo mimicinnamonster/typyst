@@ -150,5 +150,6 @@ void render(void);
 
 extern void initanim(char *);
 extern int animate(void);
+extern int anim_next_frame_ms(void);
 
 #endif

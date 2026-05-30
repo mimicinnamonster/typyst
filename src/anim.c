@@ -19,6 +19,31 @@ static int decoded = 0;
 static struct timespec last;
 static SDL_Thread *thrd;
 
+int firstRendered = 0;
+
+int
+anim_next_frame_ms(void)
+{
+	if (!anim.duration || !anim.frames || !anim.duration[anim.curr])
+		return 1000 / 60;
+
+	if (!firstRendered)
+		return 1;
+
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+
+	unsigned long dur = MAX(100/30, anim.duration[anim.curr]);
+	unsigned long elapsed = (now.tv_sec - last.tv_sec) * 100
+	                      + (now.tv_nsec - last.tv_nsec) / 10000000;
+
+	if (elapsed >= dur)
+		return 1;
+
+	int ms = (dur - elapsed) * 10;
+	return MAX(1, ms);
+}
+
 static
 void
 decodepixels(void)
@@ -89,8 +114,6 @@ decodeanimation(void *data)
 	return 0;
 }
 
-int firstRendered = 0;
-
 int
 animate(void)
 {
@@ -109,7 +132,7 @@ animate(void)
 	// is it time to advance frame
 	unsigned long dur = MAX(100/30, anim.duration[anim.curr]);
 	unsigned long sd = (now.tv_sec - last.tv_sec) * 100;
-	unsigned long nsd = (now.tv_nsec - last.tv_nsec) / 1e7;
+	unsigned long nsd = (now.tv_nsec - last.tv_nsec) / 10000000;
 	if (sd + nsd < dur) return 0;
 
 	last = now;

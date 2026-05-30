@@ -810,22 +810,10 @@ render_animation(void)
 			tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
 			tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 		}
+		return 1;  /* frame advanced */
 	}
 
-	if (tx_anim_len > 0) {
-		/* Render animation frame to background texture */
-		SDL_SetRenderTarget(win.rnd, win.txt_background);
-		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
-		SDL_RenderClear(win.rnd);
-		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
-		/* Dark overlay for readability */
-		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
-		SDL_RenderFillRect(win.rnd, 0);
-
-		return 1;
-	}
-
-	return 0;
+	return 0;  /* same frame */
 }
 
 void
@@ -839,28 +827,43 @@ render(void)
 			win.should_draw = 0;
 	}
 
-	int anim = render_animation();
+	int frame_changed = render_animation();
+	int have_anim = (opt_anim && tx_anim_len > 0);
+	int need_render = frame_changed || win.updated;
 
-	/* Render glyphs directly to screen (no -a) or to glyph texture (with -a) */
-	if (opt_anim && anim) {
+	if (!need_render) {
+		SDL_UnlockMutex(mutex);
+		return;
+	}
+
+	/* Re-render background texture when frame advances */
+	if (frame_changed && have_anim) {
+		SDL_SetRenderTarget(win.rnd, win.txt_background);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_RenderClear(win.rnd);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		/* Dark overlay for readability */
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
+		SDL_RenderFillRect(win.rnd, 0);
+	}
+
+	/* Render glyphs to glyph texture when animation is active, else directly to screen */
+	if (have_anim) {
 		SDL_SetRenderTarget(win.rnd, win.txt_glyphs);
 	} else {
 		SDL_SetRenderTarget(win.rnd, 0);
 	}
 
-	int glyp = render_glyphs();
+	render_glyphs();
 
-	if (glyp || anim) {
-		if (anim) {
-			/* Composite: reset target to screen, draw background then glyphs on top */
-			SDL_SetRenderTarget(win.rnd, 0);
-			SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
-			SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
-		}
-
-		SDL_RenderPresent(win.rnd);
+	/* Composite and present */
+	if (have_anim) {
+		SDL_SetRenderTarget(win.rnd, 0);
+		SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
+		SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
 	}
 
+	SDL_RenderPresent(win.rnd);
 	SDL_UnlockMutex(mutex);
 }
 
@@ -1129,10 +1132,12 @@ read_events(void)
 {
 	SDL_Event event;
 
-	/* Block until an event arrives or the frame-interval timeout expires.
-	 * This replaces the old busy-polling loop, letting the thread truly
-	 * sleep when idle instead of waking 30 times per second for nothing. */
-	int has_event = SDL_WaitEventTimeout(&event, 1000 / opt_fps);
+	/* Compute how long we can sleep before the next animation frame is due.
+	 * When idle this lets us block far longer than the old fixed 16ms timeout,
+	 * cutting wakeups from ~60/s to just the GIF's frame rate. */
+	int timeout_ms = opt_anim ? anim_next_frame_ms() : (1000 / opt_fps);
+
+	int has_event = SDL_WaitEventTimeout(&event, timeout_ms);
 
 	SDL_LockMutex(mutex);
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
