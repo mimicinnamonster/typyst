@@ -1,3 +1,5 @@
+/* See LICENSE.md for license details. */
+
 static char *font = "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true";
 static char *font2 = "Apple Color Emoji";
 float alpha = 0.8;

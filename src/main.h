@@ -1,3 +1,5 @@
+/* See LICENSE.md for license details. */
+
 #ifndef MAIN_H
 #define MAIN_H
 

@@ -1,3 +1,5 @@
+/* See LICENSE.md for license details. */
+
 #include <stdlib.h>
 #include <errno.h>
 #include <locale.h>
@@ -1251,7 +1253,15 @@ void
 usage(void)
 {
 	die(
-		"	-f fontconfig string\n	-a path.gif set animated gif background\n	-t transparency"
+		"Usage: typyst [options] [-- command..]\n"
+	"\n"
+	"Options:\n"
+	"  -f <string>     fontconfig font spec\n"
+	"  -p <fps>        target frame rate (default: 60)\n"
+	"  -a <path.gif>   animated gif background\n"
+	"  -t <alpha>      background transparency 0.0-1.0\n"
+	"  -s <0|1>        fullscreen (default: 0)\n"
+	"  -e              end of options, remaining args are command to run\n"
 	);
 }
 

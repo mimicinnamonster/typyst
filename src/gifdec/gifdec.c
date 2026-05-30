@@ -1,3 +1,9 @@
+/* gifdec -- small C GIF decoder
+ *
+ * by Marcel Rodrigues <marcelgmr@gmail.com>
+ * https://github.com/lecram/gifdec
+ * Released into the public domain. */
+
 #include "gifdec.h"
 
 #include <stdio.h>
