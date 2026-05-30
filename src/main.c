@@ -23,15 +23,15 @@
 
 inline ushort sixd_to_16bit(int);
 void drawglyph(Glyph, int, int);
-void init();
+void init(void);
 void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
 int loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
-int read_events();
+int read_events(void);
 void unloadfont(Font *f);
-void resizefont();
+void resizefont(void);
 
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE (1 << 16)
@@ -56,7 +56,7 @@ Geometry geo;
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 
-void bell()
+void bell(void)
 {
 	// TODO: bell
 }
@@ -101,7 +101,7 @@ resize(int width, int height)
 	int newlen = cols*rows;
 
 	win.glyphs = realloc(win.glyphs, newlen*sizeof(Glyph));
-	memset(win.glyphs, 0, newlen); // TODO: figure out how to zero only new bits
+	memset(win.glyphs, 0, newlen * sizeof(Glyph));
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
@@ -327,7 +327,7 @@ loadfontset(FcPattern *pattern)
 }
 
 void
-init()
+init(void)
 {
 	tnew(MAX(cols, 1), MAX(rows, 1));
 
@@ -388,7 +388,7 @@ init()
 
 
 void
-resizefont()
+resizefont(void)
 {
 	if (dc.fontsetlen) {
 		for (int i=0; i<dc.fontsetlen; i++) {
@@ -589,26 +589,22 @@ getglyphwidth(Rune u)
 	if (f->widths[u] != -1)
 		return f->widths[u];
 
+	// wcwidth returned -1 (unknown width)
+	// For characters in the Supplementary Multilingual Plane (0x10000+)
+	// where most emoji live, assume width 2 if the font says it's wide
+	// Otherwise default to 1
+	if (u >= 0x10000) {
+		/* Check if this is likely an emoji by trying TTF glyph metrics */
+		int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
+		TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
+		if (advance > win.cw) {
+			f->widths[u] = 2;
+			return 2;
+		}
+	}
+
 	// ignore glyph metrics for now
 	return 1;
-
-	char text[8] = {0};
-	utf8encode(u, text);
-	int before = f->widths[u];
-
-	int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
-	TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
-
-	if (advance > win.cw)
-		f->widths[u] = 2;
-	else
-		f->widths[u] = 0;
-
-	#ifdef DEBUG
-	printf("width %s %x: %d before %d\n", text, u, f->widths[u], before);
-	#endif
-
-	return f->widths[u];
 }
 
 void
@@ -634,7 +630,7 @@ drawglyph(Glyph g, int x, int y)
 }
 
 int
-render_glyphs()
+render_glyphs(void)
 {
 	if (!win.updated)
 		return 0;
@@ -802,7 +798,7 @@ render_glyphs()
 }
 
 int
-render_animation()
+render_animation(void)
 {
 	if (!opt_anim)
 		return 0;
@@ -832,7 +828,7 @@ render_animation()
 }
 
 void
-render()
+render(void)
 {
 	SDL_LockMutex(mutex);
 
@@ -960,7 +956,7 @@ kmap(SDL_KeyboardEvent *ev)
 		if (ev->keysym.sym != kp->key)
 			continue;
 
-		if (!(ev->keysym.mod & kp->mode))
+		if (kp->mode != 0xffffffff && !(ev->keysym.mod & kp->mode))
 			continue;
 
 		#ifdef DEBUG
@@ -1048,11 +1044,11 @@ handle_keypress(SDL_Event *ev)
 			buf[0] = 0;
 		}
 		if (isletter) {
-			if (isctrl && isshift)
-				buf[0] -= '@';
-
-			if (isctrl && !isshift)
-				buf[0] -= '`';
+			if (isctrl) {
+				/* Ctrl(+Shift)+letter: produce control character (same for both).
+				 * SDL always sends lowercase keysym for letters regardless of shift. */
+				buf[0] &= 31;
+			}
 
 			if (!isctrl && isshift) {
 				#ifdef DEBUG
@@ -1127,7 +1123,7 @@ handle_textinput(SDL_Event *ev)
 static int quit_requested = 0;
 
 int
-read_events()
+read_events(void)
 {
 	SDL_LockMutex(mutex);
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
@@ -1154,7 +1150,8 @@ read_events()
 }
 
 int
-read_tty() {
+read_tty(void *data) {
+	(void)data;
 	fd_set rfd;
 
 	while (1) {
@@ -1221,7 +1218,7 @@ usage(void)
 }
 
 void
-randombullshitgo() {
+randombullshitgo(void) {
 	win.drawing = 1;
 			unsigned char r = rand() % 255;
 			unsigned char g = rand() % 255;

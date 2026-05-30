@@ -148,7 +148,9 @@ static void csihandle(void);
 static void csiparse(void);
 static void csireset(void);
 static int eschandle(uchar);
+#ifdef DEBUG
 static void strdump(void);
+#endif
 static void strhandle(void);
 static void strparse(void);
 static void strreset(void);
@@ -700,7 +702,7 @@ ttyresize(int tw, int th)
 }
 
 void
-ttyhangup()
+ttyhangup(void)
 {
 	/* Send SIGHUP to shell */
 	kill(pid, SIGHUP);
@@ -1681,6 +1683,7 @@ strparse(void)
 	}
 }
 
+#ifdef DEBUG
 void
 strdump(void)
 {
@@ -1707,6 +1710,7 @@ strdump(void)
 	}
 	fprintf(stderr, "ESC\\\n");
 }
+#endif /* DEBUG */
 
 void
 strreset(void)
@@ -1718,7 +1722,7 @@ strreset(void)
 }
 
 void
-sendbreak(/*const Arg *arg*/)
+sendbreak(void)
 {
 	if (tcsendbreak(cmdfd, 0))
 		perror("Error sending break");
@@ -1735,13 +1739,13 @@ tprinter(char *s, size_t len)
 }
 
 void
-toggleprinter(/*const Arg *arg*/)
+toggleprinter(void)
 {
 	term.mode ^= MODE_PRINT;
 }
 
 void
-printscreen(/*const Arg *arg*/)
+printscreen(void)
 {
 	tdump();
 }

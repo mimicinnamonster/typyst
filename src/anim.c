@@ -21,7 +21,7 @@ static SDL_Thread *thrd;
 
 static
 void
-decodepixels()
+decodepixels(void)
 {
 	unsigned char *color = tmppixels;
 	void *addr;
@@ -43,7 +43,7 @@ decodepixels()
 
 static
 int
-decodeframe()
+decodeframe(void)
 {
 	if (decoded || gd_get_frame(gif) <= 0) {
 		decoded = 1;
@@ -69,8 +69,10 @@ decodeframe()
 
 static
 int
-decodeanimation()
+decodeanimation(void *data)
 {
+	(void)data;
+
 	#ifdef DEBUG
 	printf("starting animation decoding thread\n");
 	#endif
@@ -90,7 +92,7 @@ decodeanimation()
 int firstRendered = 0;
 
 int
-animate()
+animate(void)
 {
 	struct timespec now;
 	clock_gettime(CLOCK_MONOTONIC, &now);

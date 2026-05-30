@@ -29,6 +29,8 @@ cat > "${MACOS}/typyst" << 'LAUNCHER'
 #!/bin/bash
 DIR="$(cd "$(dirname "$0")" && pwd)"
 export PATH="/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin"
+export LC_ALL=en_US.UTF-8
+export LANG=en_US.UTF-8
 cd "$HOME"
 
 # Animated background

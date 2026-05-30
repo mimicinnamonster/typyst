@@ -142,8 +142,13 @@ void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);
 int getglyphwidth(Rune u);
+void init(void);
+void resize(int, int);
+int read_events(void);
+void resizefont(void);
+void render(void);
 
 extern void initanim(char *);
-extern int animate();
+extern int animate(void);
 
 #endif
