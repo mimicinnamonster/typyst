@@ -1177,16 +1177,31 @@ read_tty(void *data) {
 		}
 
 		if (FD_ISSET(win.ttyfd, &rfd)) {
+			struct timespec ts;
+
 			SDL_LockMutex(mutex);
 
-			ttyread();
+			/* Drain: read all buffered data with a 1ms timeout.
+			 * Between two tiny writes the PTY buffer can be empty
+			 * for microseconds — with a zero timeout pselect would
+			 * exit the drain loop immediately and we'd render a
+			 * partial frame.  1ms gives the writer time to push
+			 * more data before we give up and render. */
+			do {
+				ttyread();
+				ts.tv_sec = 0;
+				ts.tv_nsec = 1000000;
+				FD_ZERO(&rfd);
+				FD_SET(win.ttyfd, &rfd);
+			} while (pselect(win.ttyfd+1, &rfd, 0, 0, &ts, 0) > 0
+			         && FD_ISSET(win.ttyfd, &rfd));
+
 			MODBIT(win.mode, 1, MODE_VISIBLE);
-			//draw();
 			win.should_draw = 1;
 
 			SDL_UnlockMutex(mutex);
 
-			/* Wake up the main thread in SDL_WaitEventTimeout */
+			/* Wake up the main thread — exactly once per batch */
 			SDL_Event wake = { .type = tty_event_type };
 			SDL_PushEvent(&wake);
 		}

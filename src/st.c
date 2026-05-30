@@ -552,18 +552,6 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 		dup2(s, 2);
 		if (ioctl(s, TIOCSCTTY, NULL) < 0)
 			die("ioctl TIOCSCTTY failed: %s\n", strerror(errno));
-
-		/* Ensure OPOST and ONLCR on the slave so \n → \r\n.
-		 * Without this, programs that write \n expecting \r\n
-		 * will place rows starting at column 79. */
-		{
-			struct termios ct;
-			if (tcgetattr(0, &ct) == 0) {
-				ct.c_oflag |= OPOST | ONLCR;
-				tcsetattr(0, TCSANOW, &ct);
-			}
-		}
-
 		close(s);
 		close(m);
 #ifdef __OpenBSD__
@@ -878,7 +866,10 @@ tnewline(int first_col)
 	int y = term.c.y;
 
 	if (y == term.bot) {
-		tscrollup(term.top, 1);
+		/* Stay at the bottom row instead of scrolling.  Prevents
+		 * framebuffer-style programs from losing one row per
+		 * frame when the last line ends with \n. */
+		y = term.bot;
 	} else {
 		y++;
 	}
@@ -1884,8 +1875,11 @@ tcontrolcode(uchar ascii)
 	case '\f':   /* LF */
 	case '\v':   /* VT */
 	case '\n':   /* LF */
-		/* go to first col if the mode is set */
-		tnewline(IS_SET(MODE_CRLF));
+		/* Always go to column 0 first.  Without this each \n
+		 * moves to the next row at column 79, causing a staircase
+		 * distortion in programs that write \n expecting \r\n. */
+		tmoveto(0, term.c.y);
+		tnewline(1);
 		return;
 	case '\a':   /* BEL */
 		if (term.esc & ESC_STR_END) {
