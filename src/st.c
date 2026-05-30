@@ -552,6 +552,18 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 		dup2(s, 2);
 		if (ioctl(s, TIOCSCTTY, NULL) < 0)
 			die("ioctl TIOCSCTTY failed: %s\n", strerror(errno));
+
+		/* Ensure OPOST and ONLCR on the slave so \n → \r\n.
+		 * Without this, programs that write \n expecting \r\n
+		 * will place rows starting at column 79. */
+		{
+			struct termios ct;
+			if (tcgetattr(0, &ct) == 0) {
+				ct.c_oflag |= OPOST | ONLCR;
+				tcsetattr(0, TCSANOW, &ct);
+			}
+		}
+
 		close(s);
 		close(m);
 #ifdef __OpenBSD__

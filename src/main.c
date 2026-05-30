@@ -41,7 +41,8 @@ static char *opt_io	= 0;
 static char *opt_line = 0;
 static char *opt_anim = 0;
 static int opt_fullscreen = 1;
-static unsigned int opt_fps = 30;
+static unsigned int opt_fps = 60;
+static unsigned int tty_event_type;
 
 TermWindow win;
 Animation anim;
@@ -1125,12 +1126,19 @@ static int quit_requested = 0;
 int
 read_events(void)
 {
+	SDL_Event event;
+
+	/* Block until an event arrives or the frame-interval timeout expires.
+	 * This replaces the old busy-polling loop, letting the thread truly
+	 * sleep when idle instead of waking 30 times per second for nothing. */
+	int has_event = SDL_WaitEventTimeout(&event, 1000 / opt_fps);
+
 	SDL_LockMutex(mutex);
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
-	SDL_Event event;
-	while (SDL_PollEvent(&event)) {
-		switch(event.type) {
+	if (has_event) {
+		do {
+			switch (event.type) {
 			case SDL_QUIT:
 				quit_requested = 1;
 				break;
@@ -1143,8 +1151,13 @@ read_events(void)
 			case SDL_WINDOWEVENT:
 				handle_window(&event);
 				break;
-		}
+			default:
+				/* tty_event_type is just a wake-up signal - no action needed */
+				break;
+			}
+		} while (SDL_PollEvent(&event));
 	}
+
 	SDL_UnlockMutex(mutex);
 	return quit_requested;
 }
@@ -1172,6 +1185,10 @@ read_tty(void *data) {
 			win.should_draw = 1;
 
 			SDL_UnlockMutex(mutex);
+
+			/* Wake up the main thread in SDL_WaitEventTimeout */
+			SDL_Event wake = { .type = tty_event_type };
+			SDL_PushEvent(&wake);
 		}
 	}
 }
@@ -1282,22 +1299,20 @@ main(int argc, char *argv[])
 	mutex = SDL_CreateMutex();
 	SDL_CreateThread(read_tty, "read_tty", 0);
 
-	unsigned int lastframe = 0;
+	tty_event_type = SDL_RegisterEvents(1);
+	if (tty_event_type == (Uint32)-1) {
+		die("could not register tty event type\n");
+	}
 
+	/* Small delay prevents the main loop from starving the TTY
+	 * thread of the mutex. Without it the main thread spins at
+	 * max speed, making it hard for read_tty to acquire the mutex
+	 * and process PTY data between renders. */
 	while (!quit_requested) {
 		if (read_events())
 			break;
-
-		unsigned int currframe = SDL_GetTicks();
-		unsigned int dt = currframe - lastframe;
-
-		if (dt < 1000/opt_fps) {
-			SDL_Delay((1000/opt_fps)-dt);
-		}
-
 		render();
-
-		lastframe = SDL_GetTicks();
+		SDL_Delay(1);
 	}
 
 
