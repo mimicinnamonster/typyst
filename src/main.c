@@ -1285,7 +1285,6 @@ main(int argc, char *argv[])
 	unsigned int lastframe = 0;
 
 	while (!quit_requested) {
-		//randombullshitgo();
 		if (read_events())
 			break;
 

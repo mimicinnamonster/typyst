@@ -34,7 +34,7 @@ export LANG=en_US.UTF-8
 cd "$HOME"
 
 # Animated background
-BG_FILE="${HOME}/Videos/bgs/smoke.gif"
+BG_FILE="${HOME}/Videos/bgs/$(ls ${HOME}/Videos/bgs/ | sort -R | head -1)"
 BG_ARGS=()
 if [ -f "$BG_FILE" ]; then
     BG_ARGS=(-a "$BG_FILE")

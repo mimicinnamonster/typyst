@@ -573,10 +573,17 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 	return cmdfd;
 }
 
+/* Larger read buffer so a single ttyread() can capture an
+ * entire animation frame (~2KB for 80x24 with \r\n) without
+ * splitting it across multiple calls. BUFSIZ (typically 1024)
+ * causes each frame to be split in half, leading to partial-
+ * frame rendering and visible flickering. */
+#define TTY_BUF_SIZ 8192
+
 size_t
 ttyread(void)
 {
-	static char buf[BUFSIZ];
+	static char buf[TTY_BUF_SIZ];
 	static int buflen = 0;
 	int ret, written;
 
