@@ -301,19 +301,68 @@ loadfontset(FcPattern *pattern)
 	}
 
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (!loadfont(&fontset->ifont, pattern))
+	if (!loadfont(&fontset->ifont, pattern)) {
 		fontset->ifont = fontset->font;
+		/* Zero out shared resource pointers so unloadfont doesn't
+		 * double-free them; open a separate TTF handle with synthetic
+		 * style instead. */
+		fontset->ifont.pattern = NULL;
+		fontset->ifont.match = NULL;
+		fontset->ifont.charset = NULL;
+		fontset->ifont.cache = NULL;
+		fontset->ifont.cache_widths = NULL;
+		fontset->ifont.cache_heights = NULL;
+		fontset->ifont.widths = NULL;
+		fontset->ifont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                        usedfontsize, 0);
+		if (fontset->ifont.ttf) {
+			TTF_SetFontStyle(fontset->ifont.ttf, TTF_STYLE_ITALIC);
+		} else {
+			fontset->ifont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_SLANT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	if (!loadfont(&fontset->bfont, pattern))
+	if (!loadfont(&fontset->bfont, pattern)) {
 		fontset->bfont = fontset->font;
+		fontset->bfont.pattern = NULL;
+		fontset->bfont.match = NULL;
+		fontset->bfont.charset = NULL;
+		fontset->bfont.cache = NULL;
+		fontset->bfont.cache_widths = NULL;
+		fontset->bfont.cache_heights = NULL;
+		fontset->bfont.widths = NULL;
+		fontset->bfont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                        usedfontsize, 0);
+		if (fontset->bfont.ttf) {
+			TTF_SetFontStyle(fontset->bfont.ttf, TTF_STYLE_BOLD);
+		} else {
+			fontset->bfont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_WEIGHT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (!loadfont(&fontset->ibfont, pattern))
+	if (!loadfont(&fontset->ibfont, pattern)) {
 		fontset->ibfont = fontset->font;
+		fontset->ibfont.pattern = NULL;
+		fontset->ibfont.match = NULL;
+		fontset->ibfont.charset = NULL;
+		fontset->ibfont.cache = NULL;
+		fontset->ibfont.cache_widths = NULL;
+		fontset->ibfont.cache_heights = NULL;
+		fontset->ibfont.widths = NULL;
+		fontset->ibfont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                         usedfontsize, 0);
+		if (fontset->ibfont.ttf) {
+			TTF_SetFontStyle(fontset->ibfont.ttf,
+			                 TTF_STYLE_BOLD | TTF_STYLE_ITALIC);
+		} else {
+			fontset->ibfont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternDel(pattern, FC_SLANT);
 
@@ -718,8 +767,27 @@ render_glyphs(void)
 			// printf("producing glyph %s %d\n", text, g.u);
 			#endif
 
+			/* Set font style so SDL_ttf synthesises bold/italic even
+			 * when the font file itself doesn't have those variants.
+			 * This is the key fix for bold/italic rendering when the
+			 * dedicated bold/italic font files are not installed. */
+			int style = TTF_STYLE_NORMAL;
+			if (g.mode & ATTR_BOLD) style |= TTF_STYLE_BOLD;
+			if (g.mode & ATTR_ITALIC) style |= TTF_STYLE_ITALIC;
+			TTF_SetFontStyle(f->ttf, style);
+
 			SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
-			if (!fsur) continue;
+			if (!fsur) {
+				/* If the selected font can't render the glyph, try the
+				 * regular (non-modified) font from the same fontset as
+				 * a fallback before giving up entirely. */
+				TTF_SetFontStyle(f->ttf, TTF_STYLE_NORMAL);
+				fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
+				if (!fsur) continue;
+				/* Make sure the cache uses the right mode so subsequent
+				 * lookups don't keep trying the style variant. */
+				g.mode &= ~(ATTR_BOLD | ATTR_ITALIC);
+			}
 
 			if (f->width != width) {
 				#ifdef DEBUG

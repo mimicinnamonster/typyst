@@ -92,7 +92,7 @@ SDL_Texture *cache_init(SDL_Renderer *rnd, int glyph_width, int glyph_height) {
 char cache_get_mode(Glyph g) {
 	char mode = 0;
 
-	if (g.mode & CACHE_ITALIC && g.mode & CACHE_BOLD) {
+	if ((g.mode & ATTR_ITALIC) && (g.mode & ATTR_BOLD)) {
 		mode = CACHE_BOLDITALIC;
 	} else if (g.mode & ATTR_ITALIC) {
 		mode = CACHE_ITALIC;
