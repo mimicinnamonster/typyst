@@ -1072,6 +1072,23 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
+	/* Cmd+V — paste from clipboard */
+	if ((ev->key.keysym.mod & KMOD_GUI) && ev->key.keysym.sym == SDLK_v) {
+		char *clip = SDL_GetClipboardText();
+		if (clip && *clip) {
+			size_t len = strlen(clip);
+			if (IS_SET(MODE_BRCKTPASTE)) {
+				ttywrite("\033[200~", 6, 0);
+				ttywrite(clip, len, 1);
+				ttywrite("\033[201~", 6, 0);
+			} else {
+				ttywrite(clip, len, 1);
+			}
+		}
+		SDL_free(clip);
+		return;
+	}
+
 	char *kmapbuf = kmap((SDL_KeyboardEvent *)ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
@@ -1187,6 +1204,12 @@ handle_textinput(SDL_Event *ev)
 
 	if (isalt)
 		return;  /* Alt+letter handled by handle_keypress instead */
+
+	/* When pasting via Cmd+V, SDL may also post a SDL_TEXTINPUT event
+	 * after the KEYDOWN event. Skip it here since handle_keypress already
+	 * handles the paste with proper bracketed paste wrapping. */
+	if (kb_state[SDL_SCANCODE_LGUI] || kb_state[SDL_SCANCODE_RGUI])
+		return;
 
 	ttywrite(ev->text.text, strlen(ev->text.text), 1);
 
