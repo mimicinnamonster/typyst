@@ -1265,15 +1265,18 @@ int
 read_tty(void *data) {
 	(void)data;
 	fd_set rfd;
+	int ret;
 
 	while (1) {
-		FD_ZERO(&rfd);
-		FD_SET(win.ttyfd, &rfd);
+		/* Retry on EINTR so a stray signal doesn't kill the reader */
+		do {
+			FD_ZERO(&rfd);
+			FD_SET(win.ttyfd, &rfd);
+			ret = pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0);
+		} while (ret < 0 && errno == EINTR);
 
-		if (pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0) < 0) {
-			if (errno == EINTR) return 0;
+		if (ret < 0)
 			die("select failed: %s\n", strerror(errno));
-		}
 
 		if (FD_ISSET(win.ttyfd, &rfd)) {
 			struct timespec ts;
@@ -1285,15 +1288,24 @@ read_tty(void *data) {
 			 * for microseconds — with a zero timeout pselect would
 			 * exit the drain loop immediately and we'd render a
 			 * partial frame.  1ms gives the writer time to push
-			 * more data before we give up and render. */
+			 * more data before we give up and render.
+			 *
+			 * Retry on EINTR so signals (e.g. SIGCHLD from
+			 * child processes of whatever is running inside the
+			 * PTY) don't cause a premature exit — which would
+			 * leave the escape state machine in an intermediate
+			 * state and leak bytes like `[H` as literal text. */
 			do {
 				ttyread();
 				ts.tv_sec = 0;
 				ts.tv_nsec = 1000000;
+			retry_drain:
 				FD_ZERO(&rfd);
 				FD_SET(win.ttyfd, &rfd);
-			} while (pselect(win.ttyfd+1, &rfd, 0, 0, &ts, 0) > 0
-			         && FD_ISSET(win.ttyfd, &rfd));
+				ret = pselect(win.ttyfd+1, &rfd, 0, 0, &ts, 0);
+				if (ret < 0 && errno == EINTR)
+					goto retry_drain;
+			} while (ret > 0 && FD_ISSET(win.ttyfd, &rfd));
 
 			MODBIT(win.mode, 1, MODE_VISIBLE);
 			win.should_draw = 1;
