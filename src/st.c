@@ -594,6 +594,8 @@ ttyread(void)
 	case 0:
 		_exit(0);
 	case -1:
+		if (errno == EINTR)
+			return 0;  /* signal interrupted us, caller will retry */
 		die("couldn't read from shell: %s\n", strerror(errno));
 		__attribute__ ((fallthrough));
 	default:

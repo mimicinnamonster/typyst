@@ -5,6 +5,7 @@
 #include <locale.h>
 #include <time.h>
 #include <sys/select.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
@@ -1286,6 +1287,16 @@ read_tty(void *data) {
 	(void)data;
 	fd_set rfd;
 	int ret;
+
+	/* Block SIGCHLD so child-process signals don't interrupt pselect,
+	 * which would leave the escape state machine in an intermediate
+	 * state and leak bytes like `[H` as literal text. */
+	{
+		sigset_t sigmask;
+		sigemptyset(&sigmask);
+		sigaddset(&sigmask, SIGCHLD);
+		pthread_sigmask(SIG_BLOCK, &sigmask, NULL);
+	}
 
 	while (1) {
 		/* Retry on EINTR so a stray signal doesn't kill the reader */
