@@ -1,3 +1,5 @@
+/* See LICENSE.md for license details. */
+
 #ifndef MAIN_H
 #define MAIN_H
 
@@ -59,7 +61,6 @@ typedef struct {
 	int width;
 	int ascent;
 	int descent;
-	FcFontSet *set;
 	char *filepath;
 	FcPattern *pattern;
 	FcPattern *match;
@@ -135,6 +136,7 @@ void drawline(Line, int, int, int);
 void finishdraw(void);
 void loadcols(void);
 int setcolorname(int, const char *);
+extern const RenderColor colorname[];
 void settitle(char *);
 int setcursor(int);
 void settermmode(int, unsigned int);
@@ -142,8 +144,14 @@ void setpointermotion(int);
 void setsel(char *);
 int startdraw(void);
 int getglyphwidth(Rune u);
+void init(void);
+void resize(int, int);
+int read_events(void);
+void resizefont(void);
+void render(void);
 
 extern void initanim(char *);
-extern int animate();
+extern int animate(void);
+extern int anim_next_frame_ms(void);
 
 #endif

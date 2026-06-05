@@ -25,15 +25,11 @@ awk -v term_cols="${width:-$(tput cols || echo 80)}" 'BEGIN{
 
 #echo "base"
 #for x in {0..8}; do for i in {30..37}; do for a in {40..47}; do echo -ne "\e[$x;$i;$a""m\\\e[$x;$i;$a""m\e[0;37;40m "; done; echo; done; done; echo ""
-#
-#esc() {
-#  printf "\033[$1m"
-#}
-#
-#color() {
-#  echo $(esc "0;$(($2+$1))") color $1
-#}
-#
+
+color() {
+  echo $(esc "0;$(($2+$1))") color $1
+}
+
 #echo $(color 0 30) black $(esc 0)
 #echo $(color 1 30) red $(esc 0)
 #echo $(color 2 30) green $(esc 0)
@@ -42,7 +38,7 @@ awk -v term_cols="${width:-$(tput cols || echo 80)}" 'BEGIN{
 #echo $(color 5 30) pink $(esc 0)
 #echo $(color 6 30) sky $(esc 0)
 #echo $(color 7 30) white $(esc 0)
-#
+
 #echo $(color 0 90) bright grey $(esc 0)
 #echo $(color 1 90) bright red $(esc 0)
 #echo $(color 2 90) bright green $(esc 0)
@@ -57,3 +53,6 @@ printf "glyph: %s code point: %x\n" ⚠ \'⚠
 printf "glyph: %s code point: %x\n" ⌘ \'⌘
 printf "glyph: %s code point: %x\n" ┐ \'┐
 printf "glyph: %s code point %x\n" 🌍 \'🌍
+printf "glyph: %s code point %x\n" 🌍 \'🌍
+
+echo $(color 2 30) "|●|" $(esc 0)

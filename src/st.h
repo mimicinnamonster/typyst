@@ -82,10 +82,10 @@ void die(const char *, ...);
 void redraw(void);
 void draw(void);
 
-void printscreen(/*const Arg **/);
+void printscreen(void);
 void printsel(const Arg *);
-void sendbreak(/*const Arg **/);
-void toggleprinter(/*const Arg **/);
+void sendbreak(void);
+void toggleprinter(void);
 
 int tattrset(int);
 void tnew(int, int);
@@ -111,6 +111,8 @@ size_t utf8encode(Rune, char *);
 void *xmalloc(size_t);
 void *xrealloc(void *, size_t);
 char *xstrdup(const char *);
+
+extern int syncd_output; /* DEC private mode 2026 — Synchronized Output */
 
 /* config.h globals */
 extern char *utmp;

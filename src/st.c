@@ -30,6 +30,8 @@
  #include <libutil.h>
 #endif
 
+int syncd_output = 0; /* DEC private mode 2026 — Synchronized Output */
+
 /* Arbitrary sizes */
 #define UTF_INVALID   0xFFFD
 #define UTF_SIZ       4
@@ -146,7 +148,9 @@ static void csihandle(void);
 static void csiparse(void);
 static void csireset(void);
 static int eschandle(uchar);
+#ifdef DEBUG
 static void strdump(void);
+#endif
 static void strhandle(void);
 static void strparse(void);
 static void strreset(void);
@@ -465,8 +469,8 @@ execsh(char *cmd, char **args)
 	_exit(1);
 }
 
-void
-sigchld(/*int a*/)
+static void
+sigchld(int a)
 {
 	int stat;
 	pid_t p;
@@ -569,10 +573,17 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 	return cmdfd;
 }
 
+/* Larger read buffer so a single ttyread() can capture an
+ * entire animation frame (~2KB for 80x24 with \r\n) without
+ * splitting it across multiple calls. BUFSIZ (typically 1024)
+ * causes each frame to be split in half, leading to partial-
+ * frame rendering and visible flickering. */
+#define TTY_BUF_SIZ 8192
+
 size_t
 ttyread(void)
 {
-	static char buf[BUFSIZ];
+	static char buf[TTY_BUF_SIZ];
 	static int buflen = 0;
 	int ret, written;
 
@@ -698,7 +709,7 @@ ttyresize(int tw, int th)
 }
 
 void
-ttyhangup()
+ttyhangup(void)
 {
 	/* Send SIGHUP to shell */
 	kill(pid, SIGHUP);
@@ -1289,11 +1300,20 @@ tsetmode(int priv, int set, const int *args, int narg)
 			case 1015: /* urxvt mangled mouse mode; incompatible
 				      and can be mistaken for other control
 				      codes. */
+			case 2026: /* Synchronized Output */
+				syncd_output = set;
+				if (!set)
+					redraw();
+				break;
+			case 2031: /* COLOR_PALETTE_UPDATES (IGNORED) */
+			case 7727: /* APPLICATION_ESCAPE_KEY (IGNORED) */
 				break;
 			default:
+#ifdef DEBUG
 				fprintf(stderr,
 					"erresc: unknown private set/reset mode %d\n",
 					*args);
+#endif
 				break;
 			}
 		} else {
@@ -1313,9 +1333,11 @@ tsetmode(int priv, int set, const int *args, int narg)
 				MODBIT(term.mode, set, MODE_CRLF);
 				break;
 			default:
+#ifdef DEBUG
 				fprintf(stderr,
 					"erresc: unknown set/reset mode %d\n",
 					*args);
+#endif
 				break;
 			}
 		}
@@ -1331,9 +1353,10 @@ csihandle(void)
 	switch (csiescseq.mode[0]) {
 	default:
 	unknown:
+#ifdef DEBUG
 		fprintf(stderr, "erresc: unknown csi ");
 		csidump();
-		/* die(""); */
+#endif
 		break;
 	case '@': /* ICH -- Insert <n> blank char */
 		DEFAULT(csiescseq.arg[0], 1);
@@ -1369,6 +1392,17 @@ csihandle(void)
 	case 'c': /* DA -- Device Attributes */
 		if (csiescseq.arg[0] == 0)
 			ttywrite(vtiden, strlen(vtiden), 0);
+		break;
+	case '>': /* Secondary DA */
+		if (csiescseq.mode[1] == 'c') {
+			/* Secondary Device Attributes (DA2) */
+			char resp[32];
+			int rlen = snprintf(resp, sizeof(resp), "\033[>0;0;0c");
+			ttywrite(resp, rlen, 0);
+		}
+		/* other >-prefixed queries: silently ignored —
+		   not standard, responding with wrong format
+		   causes text leakage on screen */
 		break;
 	case 'b': /* REP -- if last char is printable print it <n> more times */
 		DEFAULT(csiescseq.arg[0], 1);
@@ -1515,9 +1549,13 @@ csihandle(void)
 		}
 		break;
 	case 's': /* DECSC -- Save cursor position (ANSI.SYS) */
+		if (csiescseq.priv)
+			goto unknown;
 		tcursor(CURSOR_SAVE);
 		break;
 	case 'u': /* DECRC -- Restore cursor position (ANSI.SYS) */
+		if (csiescseq.priv)
+			goto unknown;
 		tcursor(CURSOR_LOAD);
 		break;
 	case ' ':
@@ -1582,6 +1620,21 @@ strhandle(void)
 			if (narg > 1)
 				settitle(strescseq.args[1]);
 			return;
+		case 9:  /* iTerm2 Mark */
+			return;
+		case 10: /* dynamic foreground color */
+		case 11: /* dynamic background color */
+			if (narg > 1 && strcmp(strescseq.args[1], "?") == 0) {
+				/* Query — respond with current color */
+				char resp[64];
+				int idx = (par == 10) ? defaultfg : defaultbg;
+				const RenderColor *c = &colorname[idx];
+				int rlen = snprintf(resp, sizeof(resp),
+					"\033]%d;rgb:%04x/%04x/%04x\033\\",
+					par, c->red * 257, c->green * 257, c->blue * 257);
+				ttywrite(resp, rlen, 0);
+			}
+			return;
 		case 4: /* color set */
 			if (narg < 3)
 				break;
@@ -1613,8 +1666,10 @@ strhandle(void)
 		return;
 	}
 
+#ifdef DEBUG
 	fprintf(stderr, "erresc: unknown str ");
 	strdump();
+#endif
 }
 
 void
@@ -1639,6 +1694,7 @@ strparse(void)
 	}
 }
 
+#ifdef DEBUG
 void
 strdump(void)
 {
@@ -1665,6 +1721,7 @@ strdump(void)
 	}
 	fprintf(stderr, "ESC\\\n");
 }
+#endif /* DEBUG */
 
 void
 strreset(void)
@@ -1676,7 +1733,7 @@ strreset(void)
 }
 
 void
-sendbreak(/*const Arg *arg*/)
+sendbreak(void)
 {
 	if (tcsendbreak(cmdfd, 0))
 		perror("Error sending break");
@@ -1693,13 +1750,13 @@ tprinter(char *s, size_t len)
 }
 
 void
-toggleprinter(/*const Arg *arg*/)
+toggleprinter(void)
 {
 	term.mode ^= MODE_PRINT;
 }
 
 void
-printscreen(/*const Arg *arg*/)
+printscreen(void)
 {
 	tdump();
 }
@@ -1819,8 +1876,12 @@ tcontrolcode(uchar ascii)
 	case '\f':   /* LF */
 	case '\v':   /* VT */
 	case '\n':   /* LF */
-		/* go to first col if the mode is set */
-		tnewline(IS_SET(MODE_CRLF));
+		/* Always go to column 0 first.  Without this each \n
+		 * moves to the next row at column 79, causing a staircase
+		 * distortion in programs that write \n expecting \r\n. */
+		if (IS_SET(MODE_CRLF))
+			tmoveto(0, term.c.y);
+		tnewline(0);
 		return;
 	case '\a':   /* BEL */
 		if (term.esc & ESC_STR_END) {
@@ -1980,8 +2041,10 @@ eschandle(uchar ascii)
 			strhandle();
 		break;
 	default:
+#ifdef DEBUG
 		fprintf(stderr, "erresc: unknown sequence ESC 0x%02X '%c'\n",
 			(uchar) ascii, isprint(ascii)? ascii:'.');
+#endif
 		break;
 	}
 	return 1;
@@ -2264,6 +2327,9 @@ drawregion(int x1, int y1, int x2, int y2)
 void
 draw(void)
 {
+	if (syncd_output)
+		return;
+
 	int cx = term.c.x/*, ocx = term.ocx, ocy = term.ocy*/;
 
 	if (!startdraw())

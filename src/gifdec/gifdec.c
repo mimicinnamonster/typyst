@@ -1,3 +1,9 @@
+/* gifdec -- small C GIF decoder
+ *
+ * by Marcel Rodrigues <marcelgmr@gmail.com>
+ * https://github.com/lecram/gifdec
+ * Released into the public domain. */
+
 #include "gifdec.h"
 
 #include <stdio.h>
@@ -48,7 +54,7 @@ gd_open_gif(const char *fname)
     int i;
     uint8_t *bgcolor;
     int gct_sz;
-    gd_GIF *gif;
+    gd_GIF *gif = NULL;
 
     fd = open(fname, O_RDONLY);
     if (fd == -1) return NULL;

@@ -1,3 +1,5 @@
+/* See LICENSE.md for license details. */
+
 #include <stdlib.h>
 #include <errno.h>
 #include <locale.h>
@@ -23,14 +25,15 @@
 
 inline ushort sixd_to_16bit(int);
 void drawglyph(Glyph, int, int);
-void init();
+void init(void);
 void resize(int, int);
 int loadcolor(int, const char *, RenderColor *);
 int loadfont(Font *, FcPattern *);
 int loadfontset(FcPattern *pattern);
 void init_geometry(Geometry *geo);
-void fps();
-int read_events();
+int read_events(void);
+void unloadfont(Font *f);
+void resizefont(void);
 
 #define FONTATLASSIZE 256
 #define FONTCACHESIZE (1 << 16)
@@ -40,23 +43,23 @@ static char *opt_io	= 0;
 static char *opt_line = 0;
 static char *opt_anim = 0;
 static int opt_fullscreen = 1;
-static unsigned int opt_fps = 30;
+static unsigned int opt_fps = 60;
+static unsigned int tty_event_type;
 
 TermWindow win;
 Animation anim;
 DrawingContext dc;
-double usedfontsize;
+double usedfontsize = 18;
 SDL_Texture **tx_anim;
 int tx_anim_len;
-unsigned int lasttick;
-unsigned int framecount;
+
 SDL_mutex *mutex;
-SDL_Texture *glyphcache;
+SDL_Texture *glyphcache = 0;
 Geometry geo;
 
 #define IS_SET(flag)	((win.mode & (flag)) != 0)
 
-void bell()
+void bell(void)
 {
 	// TODO: bell
 }
@@ -91,7 +94,11 @@ resize(int width, int height)
 
 	init_geometry(&geo);
 
-	//SDL_PIXELFORMAT_BGRA32
+	if (win.txt_glyphs)
+		SDL_DestroyTexture(win.txt_glyphs);
+	if (win.txt_background)
+		SDL_DestroyTexture(win.txt_background);
+
 	win.txt_glyphs = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	win.txt_background = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
@@ -100,10 +107,22 @@ resize(int width, int height)
 	int newlen = cols*rows;
 
 	win.glyphs = realloc(win.glyphs, newlen*sizeof(Glyph));
-	memset(win.glyphs, 0, newlen); // TODO: figure out how to zero only new bits
+	memset(win.glyphs, 0, newlen * sizeof(Glyph));
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
+
+	/* If animation is active, immediately render the current frame to the
+	 * new background texture so the first render() doesn't show black. */
+	if (opt_anim && tx_anim_len > 0 && anim.curr < tx_anim_len) {
+		SDL_SetRenderTarget(win.rnd, win.txt_background);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_RenderClear(win.rnd);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
+		SDL_RenderFillRect(win.rnd, 0);
+		SDL_SetRenderTarget(win.rnd, 0);
+	}
 
 	redraw();
 	win.should_draw = 1;
@@ -185,6 +204,7 @@ loadfont(Font *f, FcPattern *pattern)
 {
 	char *filepath;
 	FcResult result;
+	int fontindex = 0;
 
 	FcPattern *duplicate = FcPatternDuplicate(pattern);
 	f->pattern = duplicate;
@@ -201,21 +221,20 @@ loadfont(Font *f, FcPattern *pattern)
 	}
 
 	FcPatternGetString(f->match, FC_FILE, 0, (FcChar8**)&filepath);
+	FcPatternGetInteger(f->match, FC_INDEX, 0, &fontindex);
 	FcPatternGetCharSet(f->match, FC_CHARSET, 0, &f->charset);
 
 	f->filepath = filepath;
 
 	#ifdef DEBUG
-	printf("loading font file: %s, font size: %f\n", filepath, usedfontsize);
+	printf("loading font file: %s, font size: %f, index: %d\n", filepath, usedfontsize, fontindex);
 	#endif
 
-	f->ttf = TTF_OpenFont(filepath, usedfontsize);
+	f->ttf = TTF_OpenFontIndex(filepath, usedfontsize, fontindex);
 	if (!f->ttf) return 0;
 
-	// TODO: hinting
-	TTF_SetFontHinting(f->ttf, TTF_HINTING_LIGHT);
-
-	f->set = 0;
+	TTF_SetFontHinting(f->ttf, TTF_HINTING_NORMAL);
+	TTF_SetFontOutline(f->ttf, 0);
 
 	TTF_GlyphMetrics(f->ttf, 'a', 0, 0, &f->ascent, &f->descent, &f->width);
 	f->height = TTF_FontHeight(f->ttf);
@@ -240,9 +259,26 @@ loadfont(Font *f, FcPattern *pattern)
 	return 1;
 }
 
+void
+unloadfont(Font *f)
+{
+	//free(f->filepath);
+	FcPatternDestroy(f->pattern);
+	FcPatternDestroy(f->match);
+	//free(f->charset);
+	TTF_CloseFont(f->ttf);
+	free(f->cache);
+	free(f->cache_widths);
+	free(f->cache_heights);
+	free(f->widths);
+}
+
 FcPattern *createfontpattern(const char *fontstr)
 {
 	FcPattern *pattern = FcNameParse((const FcChar8 *)fontstr);
+	FcPatternDel(pattern, FC_PIXEL_SIZE);
+	FcValue v = (FcValue){ .type = FcTypeDouble, .u = {.d = usedfontsize }};
+	assert(FcPatternAdd(pattern, FC_PIXEL_SIZE, v, 1));
 	return pattern;
 }
 
@@ -253,6 +289,10 @@ loadfontset(FcPattern *pattern)
 	FontSet *fontset = &dc.fontsets[dc.fontsetlen-1];
 	*fontset = (FontSet){0};
 
+	#ifdef DEBUG
+	printf("number of fontsets: %d\n", dc.fontsetlen);
+	#endif
+
 	double fontval;
 
 	if (FcPatternGetDouble(pattern, FC_PIXEL_SIZE, 0, &fontval) == FcResultMatch) {
@@ -260,6 +300,7 @@ loadfontset(FcPattern *pattern)
 	} else if (FcPatternGetDouble(pattern, FC_SIZE, 0, &fontval) == FcResultMatch) {
 		usedfontsize = -1;
 	} else {
+		assert(0);
 		FcPatternAddDouble(pattern, FC_PIXEL_SIZE, 12);
 		usedfontsize = 12;
 	}
@@ -275,19 +316,68 @@ loadfontset(FcPattern *pattern)
 	}
 
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (!loadfont(&fontset->ifont, pattern))
+	if (!loadfont(&fontset->ifont, pattern)) {
 		fontset->ifont = fontset->font;
+		/* Zero out shared resource pointers so unloadfont doesn't
+		 * double-free them; open a separate TTF handle with synthetic
+		 * style instead. */
+		fontset->ifont.pattern = NULL;
+		fontset->ifont.match = NULL;
+		fontset->ifont.charset = NULL;
+		fontset->ifont.cache = NULL;
+		fontset->ifont.cache_widths = NULL;
+		fontset->ifont.cache_heights = NULL;
+		fontset->ifont.widths = NULL;
+		fontset->ifont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                        usedfontsize, 0);
+		if (fontset->ifont.ttf) {
+			TTF_SetFontStyle(fontset->ifont.ttf, TTF_STYLE_ITALIC);
+		} else {
+			fontset->ifont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_SLANT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
-	if (!loadfont(&fontset->bfont, pattern))
+	if (!loadfont(&fontset->bfont, pattern)) {
 		fontset->bfont = fontset->font;
+		fontset->bfont.pattern = NULL;
+		fontset->bfont.match = NULL;
+		fontset->bfont.charset = NULL;
+		fontset->bfont.cache = NULL;
+		fontset->bfont.cache_widths = NULL;
+		fontset->bfont.cache_heights = NULL;
+		fontset->bfont.widths = NULL;
+		fontset->bfont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                        usedfontsize, 0);
+		if (fontset->bfont.ttf) {
+			TTF_SetFontStyle(fontset->bfont.ttf, TTF_STYLE_BOLD);
+		} else {
+			fontset->bfont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_WEIGHT);
 
 	FcPatternAddInteger(pattern, FC_WEIGHT, FC_WEIGHT_BOLD);
 	FcPatternAddInteger(pattern, FC_SLANT, FC_SLANT_ITALIC);
-	if (!loadfont(&fontset->ibfont, pattern))
+	if (!loadfont(&fontset->ibfont, pattern)) {
 		fontset->ibfont = fontset->font;
+		fontset->ibfont.pattern = NULL;
+		fontset->ibfont.match = NULL;
+		fontset->ibfont.charset = NULL;
+		fontset->ibfont.cache = NULL;
+		fontset->ibfont.cache_widths = NULL;
+		fontset->ibfont.cache_heights = NULL;
+		fontset->ibfont.widths = NULL;
+		fontset->ibfont.ttf = TTF_OpenFontIndex(fontset->font.filepath,
+		                                         usedfontsize, 0);
+		if (fontset->ibfont.ttf) {
+			TTF_SetFontStyle(fontset->ibfont.ttf,
+			                 TTF_STYLE_BOLD | TTF_STYLE_ITALIC);
+		} else {
+			fontset->ibfont.ttf = fontset->font.ttf;
+		}
+	}
 	FcPatternDel(pattern, FC_WEIGHT);
 	FcPatternDel(pattern, FC_SLANT);
 
@@ -300,24 +390,85 @@ loadfontset(FcPattern *pattern)
 		fs->ibfont.fontset = fs;
 	}
 
-	init_geometry(&geo);
-
 	return 1;
 }
 
 void
-init()
+init(void)
 {
 	tnew(MAX(cols, 1), MAX(rows, 1));
 
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
+
 	SDL_StartTextInput();
 
-	// loadfontset calls init_geometry which needs win.cw and win.ch
-	// so lets fill it with something so it doesn't SIGFPE
-	win.cw = 1;
-	win.ch = 1;
+	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
+
+	assert(!SDL_Init(SDL_INIT_VIDEO));
+
+	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
+
+	loadcols();
+	resizefont();
+
+	win.w = cols * win.cw;
+	win.h = rows * win.ch;
+
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
+
+	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, win.w, win.h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED|SDL_WINDOW_ALLOW_HIGHDPI);
+	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
+	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
+
+	/* Get actual drawable size and DPI scale factor */
+	int draw_w, draw_h, win_w, win_h;
+	SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+	SDL_GetWindowSize(win.wnd, &win_w, &win_h);
+	float dpi_scale = (float)draw_w / (float)win_w;
+
+	/* Reload fonts at scaled pixel size for HiDPI rendering */
+	usedfontsize *= dpi_scale;
+	resizefont();
+
+	if (opt_fullscreen) {
+		win.w = draw_w;
+		win.h = draw_h;
+	} else {
+		win.w = draw_w;
+		win.h = draw_h;
+	}
+
+	resize(win.w, win.h);
+	ttyresize(cols, rows);
+
+	win.mode = MODE_NUMLOCK;
+
+	if (opt_anim)
+		initanim(opt_anim);
+
+	SDL_EnableScreenSaver();
+	SDL_ShowWindow(win.wnd);
+}
+
+
+void
+resizefont(void)
+{
+	if (dc.fontsetlen) {
+		for (int i=0; i<dc.fontsetlen; i++) {
+			FontSet *fs = &dc.fontsets[i];
+			unloadfont(&fs->font);
+			unloadfont(&fs->bfont);
+			unloadfont(&fs->ifont);
+			unloadfont(&fs->ibfont);
+		}
+		free(dc.fontsets);
+		dc.fontsetlen = 0;
+		dc.fontsets = 0;
+	}
 
 	FcPattern *pattern = createfontpattern(font);
 	assert(pattern);
@@ -333,56 +484,17 @@ init()
 	fsres = loadfontset(pattern);
 	assert(fsres);
 	FcPatternDestroy(pattern);
-
-	loadcols();
-
-	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
-	ttyresize(cols, rows); // send terminal size to the terminal
-
-	#ifdef DEBUG
-	SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
-	#endif
-
-	assert(!SDL_Init(SDL_INIT_VIDEO));
-
-	SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
-
-	int w = cols * win.cw;
-	int h = rows * win.ch;
-
-	if (opt_fullscreen) {
-		SDL_DisplayMode DM;
-		SDL_GetCurrentDisplayMode(0, &DM);
-		w = DM.w;
-		h = DM.h;
-	}
-
-	resize(w, h);
-
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 2);
-
-	win.wnd = SDL_CreateWindow("typyst",  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED, w, h, SDL_WINDOW_HIDDEN|SDL_WINDOW_RESIZABLE|SDL_WINDOW_OPENGL|SDL_WINDOW_MAXIMIZED);
-	win.rnd = SDL_CreateRenderer(win.wnd, -1, SDL_RENDERER_ACCELERATED);
-	SDL_SetRenderDrawBlendMode(win.rnd, SDL_BLENDMODE_BLEND);
-
-	win.mode = MODE_NUMLOCK;
-
-	if (opt_anim)
-		initanim(opt_anim);
-
-	glyphcache = cache_init(win.rnd, win.cw, win.ch);
-
-	SDL_EnableScreenSaver();
-	SDL_ShowWindow(win.wnd);
-
 }
 
 Font *
 selectglyphfont(Glyph g)
 {
 	Font *f = 0;
+
+	if (!dc.fontsets || dc.fontsetlen < 1) {
+		return 0;
+	}
+
 	FontSet *fontset = dc.fontsets;
 
 	while (FcFalse == FcCharSetHasChar(fontset->font.charset, g.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
@@ -549,26 +661,22 @@ getglyphwidth(Rune u)
 	if (f->widths[u] != -1)
 		return f->widths[u];
 
+	// wcwidth returned -1 (unknown width)
+	// For characters in the Supplementary Multilingual Plane (0x10000+)
+	// where most emoji live, assume width 2 if the font says it's wide
+	// Otherwise default to 1
+	if (u >= 0x10000) {
+		/* Check if this is likely an emoji by trying TTF glyph metrics */
+		int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
+		TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
+		if (advance > win.cw) {
+			f->widths[u] = 2;
+			return 2;
+		}
+	}
+
 	// ignore glyph metrics for now
 	return 1;
-
-	char text[8] = {0};
-	utf8encode(u, text);
-	int before = f->widths[u];
-
-	int minx = 0, maxx = 0, miny = 0, maxy = 0, advance = 0;
-	TTF_GlyphMetrics(f->ttf, u, &minx, &maxx, &miny, &maxy, &advance);
-
-	if (advance > win.cw)
-		f->widths[u] = 2;
-	else
-		f->widths[u] = 0;
-
-	#ifdef DEBUG
-	printf("width %s %x: %d before %d\n", text, u, f->widths[u], before);
-	#endif
-
-	return f->widths[u];
 }
 
 void
@@ -594,10 +702,14 @@ drawglyph(Glyph g, int x, int y)
 }
 
 int
-render_glyphs()
+render_glyphs(void)
 {
 	if (!win.updated)
 		return 0;
+
+	if (!glyphcache) {
+		glyphcache = cache_init(win.rnd, win.cw, win.ch);
+	}
 
 	SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
 	SDL_RenderClear(win.rnd);
@@ -675,8 +787,27 @@ render_glyphs()
 			// printf("producing glyph %s %d\n", text, g.u);
 			#endif
 
+			/* Set font style so SDL_ttf synthesises bold/italic even
+			 * when the font file itself doesn't have those variants.
+			 * This is the key fix for bold/italic rendering when the
+			 * dedicated bold/italic font files are not installed. */
+			int style = TTF_STYLE_NORMAL;
+			if (g.mode & ATTR_BOLD) style |= TTF_STYLE_BOLD;
+			if (g.mode & ATTR_ITALIC) style |= TTF_STYLE_ITALIC;
+			TTF_SetFontStyle(f->ttf, style);
+
 			SDL_Surface *fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
-			if (!fsur) continue;
+			if (!fsur) {
+				/* If the selected font can't render the glyph, try the
+				 * regular (non-modified) font from the same fontset as
+				 * a fallback before giving up entirely. */
+				TTF_SetFontStyle(f->ttf, TTF_STYLE_NORMAL);
+				fsur = TTF_RenderUTF8_Blended(f->ttf, text, (SDL_Color){255, 255, 255, 255});
+				if (!fsur) continue;
+				/* Make sure the cache uses the right mode so subsequent
+				 * lookups don't keep trying the style variant. */
+				g.mode &= ~(ATTR_BOLD | ATTR_ITALIC);
+			}
 
 			if (f->width != width) {
 				#ifdef DEBUG
@@ -718,7 +849,7 @@ render_glyphs()
 		int glyph_width = getglyphwidth(g.u);
 		//int glyph_width_factor = 2 * (1.0 / glyph_width);
 
-		float atlas_step = 1.0 / CACHE_MAX;
+		float atlas_step = 1.0 / gc.max;
 		float atlas_offset = atlas_step * cache_pos;
 		float x1 = atlas_offset;
 		float x2 = x1 + atlas_step / 2;
@@ -758,7 +889,7 @@ render_glyphs()
 }
 
 int
-render_animation()
+render_animation(void)
 {
 	if (!opt_anim)
 		return 0;
@@ -769,49 +900,60 @@ render_animation()
 			tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
 			tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
 		}
+		return 1;  /* frame advanced */
 	}
 
-	if (tx_anim_len > 0) {
-		SDL_SetRenderTarget(win.rnd, 0/*win.txt_background*/);
-
-		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
-		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
-		SDL_RenderFillRect(win.rnd, 0);
-
-		return 1;
-	}
-
-	return 0;
+	return 0;  /* same frame */
 }
 
 void
-render()
+render(void)
 {
 	SDL_LockMutex(mutex);
 
 	if (win.should_draw) {
 		draw();
-		win.should_draw = 0;
+		if (!syncd_output)
+			win.should_draw = 0;
 	}
 
-	int anim = render_animation();
+	int frame_changed = render_animation();
+	int have_anim = (opt_anim && tx_anim_len > 0);
+	int need_render = frame_changed || win.updated;
 
-	if (opt_anim && anim){
+	if (!need_render) {
+		SDL_UnlockMutex(mutex);
+		return;
+	}
+
+	/* Re-render background texture when frame advances */
+	if (frame_changed && have_anim) {
+		SDL_SetRenderTarget(win.rnd, win.txt_background);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_RenderClear(win.rnd);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		/* Dark overlay for readability */
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
+		SDL_RenderFillRect(win.rnd, 0);
+	}
+
+	/* Render glyphs to glyph texture when animation is active, else directly to screen */
+	if (have_anim) {
 		SDL_SetRenderTarget(win.rnd, win.txt_glyphs);
+	} else {
+		SDL_SetRenderTarget(win.rnd, 0);
 	}
 
-	int glyp = render_glyphs();
+	render_glyphs();
 
-	if (glyp || anim) {
-		if (anim) {
-			SDL_SetRenderTarget(win.rnd, 0);
-			SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
-			SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
-		}
-
-		SDL_RenderPresent(win.rnd);
+	/* Composite and present */
+	if (have_anim) {
+		SDL_SetRenderTarget(win.rnd, 0);
+		SDL_RenderCopy(win.rnd, win.txt_background, 0, 0);
+		SDL_RenderCopy(win.rnd, win.txt_glyphs, 0, 0);
 	}
 
+	SDL_RenderPresent(win.rnd);
 	SDL_UnlockMutex(mutex);
 }
 
@@ -835,13 +977,7 @@ drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 void
 settitle(char *p)
 {
-	char title[100] = {0};
-	if (p == 0 || p[0] == 0) {
-		SDL_SetWindowTitle(win.wnd, "typyst");
-	} else {
-		snprintf(title, 100, "typyst: %s", p);
-		SDL_SetWindowTitle(win.wnd, title);
-	}
+	(void)p;
 }
 
 int
@@ -892,9 +1028,12 @@ handle_window(SDL_Event *ev)
 		case SDL_WINDOWEVENT_CLOSE:
 			exit(0);
 			break;
-		case SDL_WINDOWEVENT_RESIZED:
-			resize(ev->window.data1, ev->window.data2);
+		case SDL_WINDOWEVENT_RESIZED: {
+			int draw_w, draw_h;
+			SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+			resize(draw_w, draw_h);
 			break;
+		}
 		case SDL_WINDOWEVENT_FOCUS_GAINED: {
 			win.lastfocus = ev->window.timestamp;
 			redraw();
@@ -912,7 +1051,7 @@ kmap(SDL_KeyboardEvent *ev)
 		if (ev->keysym.sym != kp->key)
 			continue;
 
-		if (!(ev->keysym.mod & kp->mode))
+		if (kp->mode != 0xffffffff && !(ev->keysym.mod & kp->mode))
 			continue;
 
 		#ifdef DEBUG
@@ -946,6 +1085,30 @@ handle_keypress(SDL_Event *ev)
 		return;
 	}
 
+	/* Cmd+Q — quit the application */
+	if ((ev->key.keysym.mod & KMOD_GUI) && ev->key.keysym.sym == SDLK_q) {
+		SDL_Event quit_event = { .type = SDL_QUIT };
+		SDL_PushEvent(&quit_event);
+		return;
+	}
+
+	/* Cmd+V — paste from clipboard */
+	if ((ev->key.keysym.mod & KMOD_GUI) && ev->key.keysym.sym == SDLK_v) {
+		char *clip = SDL_GetClipboardText();
+		if (clip && *clip) {
+			size_t len = strlen(clip);
+			if (IS_SET(MODE_BRCKTPASTE)) {
+				ttywrite("\033[200~", 6, 0);
+				ttywrite(clip, len, 1);
+				ttywrite("\033[201~", 6, 0);
+			} else {
+				ttywrite(clip, len, 1);
+			}
+		}
+		SDL_free(clip);
+		return;
+	}
+
 	char *kmapbuf = kmap((SDL_KeyboardEvent *)ev);
 	if (kmapbuf) {
 		#ifdef DEBUG
@@ -961,7 +1124,7 @@ handle_keypress(SDL_Event *ev)
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
-	int isalt = ev->key.keysym.mod & KMOD_LALT;
+	int isalt = ev->key.keysym.mod & KMOD_ALT;
 
 	int isfn = (ev->key.keysym.scancode >= SDL_SCANCODE_F1 && ev->key.keysym.scancode <= SDL_SCANCODE_F12);
 	int isprint = !(ev->key.keysym.sym & 1<<30);
@@ -988,18 +1151,16 @@ handle_keypress(SDL_Event *ev)
 		if (!isprint || (!isspec && !isctrl && !isalt))
 			return;
 
-		if (!isctrl && isalt)
-			return;
 
 		if (isctrl && buf[0] == ' ') {
 			buf[0] = 0;
 		}
 		if (isletter) {
-			if (isctrl && isshift)
-				buf[0] -= '@';
-
-			if (isctrl && !isshift)
-				buf[0] -= '`';
+			if (isctrl) {
+				/* Ctrl(+Shift)+letter: produce control character (same for both).
+				 * SDL always sends lowercase keysym for letters regardless of shift. */
+				buf[0] &= 31;
+			}
 
 			if (!isctrl && isshift) {
 				#ifdef DEBUG
@@ -1014,6 +1175,28 @@ handle_keypress(SDL_Event *ev)
 			buf[0] = '\033';
 			keysz = 2;
 		}
+	}
+
+	if (isctrl && isshift && buf[0] == '=') {
+		usedfontsize++;
+		#ifdef DEBUG
+		printf("fontsize increased: %f\n", usedfontsize);
+		#endif
+		resizefont();
+		resize(win.w, win.h);
+		glyphcache = 0;
+		return;
+	}
+
+	if (isctrl && !isshift && buf[0] == '-') {
+		usedfontsize--;
+		#ifdef DEBUG
+		printf("fontsize decreased: %f\n", usedfontsize);
+		#endif
+		resizefont();
+		resize(win.w, win.h);
+		glyphcache = 0;
+		return;
 	}
 
 	#ifdef DEBUG
@@ -1037,29 +1220,47 @@ handle_textinput(SDL_Event *ev)
 	if (kb_state[SDL_SCANCODE_LCTRL])
 		return;
 
-	int isalt = kb_state[SDL_SCANCODE_LALT];
+	int isalt = kb_state[SDL_SCANCODE_LALT] || kb_state[SDL_SCANCODE_RALT];
 
-	char buf[8] = {isalt ? '\033' : 0};
-	int textlen = strlen(ev->text.text);
+	if (isalt)
+		return;  /* Alt+letter handled by handle_keypress instead */
 
-	memcpy(buf + (isalt ? 1 : 0), ev->text.text, MIN(textlen, 8 - (isalt ? 1 : 0)));
+	/* When pasting via Cmd+V, SDL may also post a SDL_TEXTINPUT event
+	 * after the KEYDOWN event. Skip it here since handle_keypress already
+	 * handles the paste with proper bracketed paste wrapping. */
+	if (kb_state[SDL_SCANCODE_LGUI] || kb_state[SDL_SCANCODE_RGUI])
+		return;
 
-	ttywrite(buf, strlen(buf), 1);
+	ttywrite(ev->text.text, strlen(ev->text.text), 1);
 
 	#ifdef DEBUG
 	printf("text input: %s\n", ev->text.text);
 	#endif
 }
 
+static int quit_requested = 0;
+
 int
-read_events()
+read_events(void)
 {
+	SDL_Event event;
+
+	/* Compute how long we can sleep before the next animation frame is due.
+	 * When idle this lets us block far longer than the old fixed 16ms timeout,
+	 * cutting wakeups from ~60/s to just the GIF's frame rate. */
+	int timeout_ms = opt_anim ? anim_next_frame_ms() : (1000 / opt_fps);
+
+	int has_event = SDL_WaitEventTimeout(&event, timeout_ms);
+
 	SDL_LockMutex(mutex);
 	kb_state = SDL_GetKeyboardState(&kb_state_len);
 
-	SDL_Event event;
-	while (SDL_PollEvent(&event)) {
-		switch(event.type) {
+	if (has_event) {
+		do {
+			switch (event.type) {
+			case SDL_QUIT:
+				quit_requested = 1;
+				break;
 			case SDL_TEXTINPUT:
 				handle_textinput(&event);
 				break;
@@ -1069,34 +1270,71 @@ read_events()
 			case SDL_WINDOWEVENT:
 				handle_window(&event);
 				break;
-		}
+			default:
+				/* tty_event_type is just a wake-up signal - no action needed */
+				break;
+			}
+		} while (SDL_PollEvent(&event));
 	}
+
 	SDL_UnlockMutex(mutex);
-	return 0;
+	return quit_requested;
 }
 
 int
-read_tty() {
+read_tty(void *data) {
+	(void)data;
 	fd_set rfd;
+	int ret;
 
 	while (1) {
-		FD_ZERO(&rfd);
-		FD_SET(win.ttyfd, &rfd);
+		/* Retry on EINTR so a stray signal doesn't kill the reader */
+		do {
+			FD_ZERO(&rfd);
+			FD_SET(win.ttyfd, &rfd);
+			ret = pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0);
+		} while (ret < 0 && errno == EINTR);
 
-		if (pselect(win.ttyfd+1, &rfd, 0, 0, 0, 0) < 0) {
-			if (errno == EINTR) return 0;
+		if (ret < 0)
 			die("select failed: %s\n", strerror(errno));
-		}
 
 		if (FD_ISSET(win.ttyfd, &rfd)) {
+			struct timespec ts;
+
 			SDL_LockMutex(mutex);
 
-			ttyread();
+			/* Drain: read all buffered data with a 1ms timeout.
+			 * Between two tiny writes the PTY buffer can be empty
+			 * for microseconds — with a zero timeout pselect would
+			 * exit the drain loop immediately and we'd render a
+			 * partial frame.  1ms gives the writer time to push
+			 * more data before we give up and render.
+			 *
+			 * Retry on EINTR so signals (e.g. SIGCHLD from
+			 * child processes of whatever is running inside the
+			 * PTY) don't cause a premature exit — which would
+			 * leave the escape state machine in an intermediate
+			 * state and leak bytes like `[H` as literal text. */
+			do {
+				ttyread();
+				ts.tv_sec = 0;
+				ts.tv_nsec = 1000000;
+			retry_drain:
+				FD_ZERO(&rfd);
+				FD_SET(win.ttyfd, &rfd);
+				ret = pselect(win.ttyfd+1, &rfd, 0, 0, &ts, 0);
+				if (ret < 0 && errno == EINTR)
+					goto retry_drain;
+			} while (ret > 0 && FD_ISSET(win.ttyfd, &rfd));
+
 			MODBIT(win.mode, 1, MODE_VISIBLE);
-			//draw();
 			win.should_draw = 1;
 
 			SDL_UnlockMutex(mutex);
+
+			/* Wake up the main thread — exactly once per batch */
+			SDL_Event wake = { .type = tty_event_type };
+			SDL_PushEvent(&wake);
 		}
 	}
 }
@@ -1138,36 +1376,20 @@ void
 usage(void)
 {
 	die(
-		"	-f fontconfig string\n	-a path.gif set animated gif background\n	-t transparency"
+		"Usage: typyst [options] [-- command..]\n"
+	"\n"
+	"Options:\n"
+	"  -f <string>     fontconfig font spec\n"
+	"  -p <fps>        target frame rate (default: 60)\n"
+	"  -a <path.gif>   animated gif background\n"
+	"  -t <alpha>      background transparency 0.0-1.0\n"
+	"  -s <0|1>        fullscreen (default: 0)\n"
+	"  -e              end of options, remaining args are command to run\n"
 	);
 }
 
 void
-fps()
-{
-	unsigned int currtick = SDL_GetTicks();
-
-	if (!lasttick) {
-		lasttick = currtick;
-		return;
-	}
-
-	framecount++;
-
-	unsigned int dt = currtick - lasttick;
-
-	if (dt > 1000) {
-		char title[30] = {0};
-		snprintf(title, 30, "%d fps", framecount);
-		settitle(title);
-
-		framecount = 0;
-		lasttick = currtick;
-	}
-}
-
-void
-randombullshitgo() {
+randombullshitgo(void) {
 	win.drawing = 1;
 			unsigned char r = rand() % 255;
 			unsigned char g = rand() % 255;
@@ -1231,24 +1453,20 @@ main(int argc, char *argv[])
 	mutex = SDL_CreateMutex();
 	SDL_CreateThread(read_tty, "read_tty", 0);
 
-	unsigned int lastframe = 0;
+	tty_event_type = SDL_RegisterEvents(1);
+	if (tty_event_type == (Uint32)-1) {
+		die("could not register tty event type\n");
+	}
 
-	while (1) {
-		//randombullshitgo();
-		read_events();
-
-		unsigned int currframe = SDL_GetTicks();
-		unsigned int dt = currframe - lastframe;
-
-		if (dt < 1000/opt_fps) {
-			SDL_Delay((1000/opt_fps)-dt);
-		}
-
-		fps();
-
+	/* Small delay prevents the main loop from starving the TTY
+	 * thread of the mutex. Without it the main thread spins at
+	 * max speed, making it hard for read_tty to acquire the mutex
+	 * and process PTY data between renders. */
+	while (!quit_requested) {
+		if (read_events())
+			break;
 		render();
-
-		lastframe = SDL_GetTicks();
+		SDL_Delay(1);
 	}
 
 

@@ -4,7 +4,8 @@
 #include <SDL.h>
 #include "st.h"
 
-#define CACHE_MAX ((unsigned short)512)
+#define CACHE_MAX_MAX 512
+#define CACHE_MAX_MIN 64
 
 #define CACHE_WIDE			(1 << 0)
 #define CACHE_NORMAL		(1 << 1)
@@ -23,9 +24,12 @@ typedef struct {
 	GlyphCacheItem *items;
 	unsigned int *lru; // LRU queue / circular buffer of glyphs
 	int head; // current head position of the LRU
+	int max;  // number of cache slots
 	int gw; // glyph width
 	int gh; // glyph height
 } GlyphCache;
+
+extern GlyphCache gc;
 
 SDL_Texture *cache_init(SDL_Renderer *rnd, int glyph_width, int glyph_height);
 int cache_get(Glyph g);
