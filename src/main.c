@@ -94,8 +94,11 @@ resize(int width, int height)
 
 	init_geometry(&geo);
 
-	//SDL_PIXELFORMAT_BGRA32
-	// TODO: destroy old textures
+	if (win.txt_glyphs)
+		SDL_DestroyTexture(win.txt_glyphs);
+	if (win.txt_background)
+		SDL_DestroyTexture(win.txt_background);
+
 	win.txt_glyphs = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	win.txt_background = SDL_CreateTexture(win.rnd, SDL_PIXELFORMAT_BGRA32, SDL_TEXTUREACCESS_TARGET, win.tw, win.th);
 	SDL_SetTextureBlendMode(win.txt_glyphs, SDL_BLENDMODE_BLEND);
@@ -108,6 +111,18 @@ resize(int width, int height)
 
 	tresize(cols, rows);
 	ttyresize(cols, rows);
+
+	/* If animation is active, immediately render the current frame to the
+	 * new background texture so the first render() doesn't show black. */
+	if (opt_anim && tx_anim_len > 0 && anim.curr < tx_anim_len) {
+		SDL_SetRenderTarget(win.rnd, win.txt_background);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
+		SDL_RenderClear(win.rnd);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
+		SDL_RenderFillRect(win.rnd, 0);
+		SDL_SetRenderTarget(win.rnd, 0);
+	}
 
 	redraw();
 	win.should_draw = 1;
@@ -475,6 +490,11 @@ Font *
 selectglyphfont(Glyph g)
 {
 	Font *f = 0;
+
+	if (!dc.fontsets || dc.fontsetlen < 1) {
+		return 0;
+	}
+
 	FontSet *fontset = dc.fontsets;
 
 	while (FcFalse == FcCharSetHasChar(fontset->font.charset, g.u) && fontset - dc.fontsets < dc.fontsetlen - 1) {
