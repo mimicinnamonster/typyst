@@ -1879,8 +1879,9 @@ tcontrolcode(uchar ascii)
 		/* Always go to column 0 first.  Without this each \n
 		 * moves to the next row at column 79, causing a staircase
 		 * distortion in programs that write \n expecting \r\n. */
-		tmoveto(0, term.c.y);
-		tnewline(1);
+		if (IS_SET(MODE_CRLF))
+			tmoveto(0, term.c.y);
+		tnewline(0);
 		return;
 	case '\a':   /* BEL */
 		if (term.esc & ESC_STR_END) {
