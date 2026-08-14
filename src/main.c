@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <locale.h>
 #include <time.h>
+#include <sched.h>
 #include <sys/select.h>
 #include <signal.h>
 #include <stdio.h>
@@ -46,6 +47,17 @@ static char *opt_anim = 0;
 static int opt_fullscreen = 1;
 static unsigned int opt_fps = 60;
 static unsigned int tty_event_type;
+static int wake_pending = 0;
+
+/* Maximum time read_tty may spend draining PTY output in a single batch.
+ * During a flood the PTY is continuously readable, so the drain loop's 1ms
+ * pselect timeout never fires and the loop would otherwise spin forever
+ * while holding the mutex — freezing rendering and input (even Ctrl+C).
+ * A wallclock budget bounds each mutex hold so the main thread can render
+ * and respond at interactive rates. */
+#define TTY_DRAIN_BUDGET_MS 8
+/* Safety net: hard cap on bytes processed per batch. */
+#define TTY_DRAIN_BUDGET_BYTES (256 * 1024)
 
 TermWindow win;
 Animation anim;
@@ -1278,6 +1290,9 @@ read_events(void)
 		} while (SDL_PollEvent(&event));
 	}
 
+	/* Reader thread may push a new wake event for the next batch */
+	wake_pending = 0;
+
 	SDL_UnlockMutex(mutex);
 	return quit_requested;
 }
@@ -1311,10 +1326,12 @@ read_tty(void *data) {
 
 		if (FD_ISSET(win.ttyfd, &rfd)) {
 			struct timespec ts;
+			Uint64 batch_start = SDL_GetTicks64();
+			size_t drained = 0;
 
 			SDL_LockMutex(mutex);
 
-			/* Drain: read all buffered data with a 1ms timeout.
+			/* Drain a bounded batch of PTY output.
 			 * Between two tiny writes the PTY buffer can be empty
 			 * for microseconds — with a zero timeout pselect would
 			 * exit the drain loop immediately and we'd render a
@@ -1325,9 +1342,20 @@ read_tty(void *data) {
 			 * child processes of whatever is running inside the
 			 * PTY) don't cause a premature exit — which would
 			 * leave the escape state machine in an intermediate
-			 * state and leak bytes like `[H` as literal text. */
+			 * state and leak bytes like `[H` as literal text.
+			 *
+			 * The batch is bounded by a wallclock budget (with a
+			 * byte cap as a safety net): a process flooding stdout
+			 * keeps the PTY continuously readable, so the 1ms
+			 * timeout below never actually fires and without a
+			 * budget the loop would spin forever holding the mutex,
+			 * freezing the terminal. */
 			do {
-				ttyread();
+				drained += ttyread();
+				if (SDL_GetTicks64() - batch_start >=
+				    TTY_DRAIN_BUDGET_MS ||
+				    drained >= TTY_DRAIN_BUDGET_BYTES)
+					break;
 				ts.tv_sec = 0;
 				ts.tv_nsec = 1000000;
 			retry_drain:
@@ -1341,11 +1369,24 @@ read_tty(void *data) {
 			MODBIT(win.mode, 1, MODE_VISIBLE);
 			win.should_draw = 1;
 
+			/* Coalesce the wake-up: at most one event in flight, so a
+			 * fast producer can't grow the SDL event queue faster than
+			 * the main thread drains it.  Renders draw the current
+			 * screen state, so a skipped event loses nothing. */
+			int should_push = !wake_pending;
+			wake_pending = 1;
+
 			SDL_UnlockMutex(mutex);
 
-			/* Wake up the main thread — exactly once per batch */
-			SDL_Event wake = { .type = tty_event_type };
-			SDL_PushEvent(&wake);
+			if (should_push) {
+				SDL_Event wake = { .type = tty_event_type };
+				SDL_PushEvent(&wake);
+			}
+
+			/* Give the main thread a chance to take the mutex and
+			 * render/handle input (e.g. Ctrl+C) before we start
+			 * draining the next batch. */
+			sched_yield();
 		}
 	}
 }
