@@ -59,6 +59,12 @@ static int wake_pending = 0;
 /* Safety net: hard cap on bytes processed per batch. */
 #define TTY_DRAIN_BUDGET_BYTES (256 * 1024)
 
+/* Number of texture slots reused for the animated background. All frames
+ * are pre-decoded once into anim.frame[] at startup; only a small ring of
+ * textures is kept, refreshed from the current frame each time it advances.
+ * This replaces the old one-permanent-texture-per-frame storage. */
+#define ANIM_TEX_SLOTS 3
+
 TermWindow win;
 Animation anim;
 DrawingContext dc;
@@ -127,11 +133,11 @@ resize(int width, int height)
 
 	/* If animation is active, immediately render the current frame to the
 	 * new background texture so the first render() doesn't show black. */
-	if (opt_anim && tx_anim_len > 0 && anim.curr < tx_anim_len) {
+	if (opt_anim && tx_anim && tx_anim_len > 0) {
 		SDL_SetRenderTarget(win.rnd, win.txt_background);
 		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
 		SDL_RenderClear(win.rnd);
-		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr % ANIM_TEX_SLOTS], 0, 0);
 		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
 		SDL_RenderFillRect(win.rnd, 0);
 		SDL_SetRenderTarget(win.rnd, 0);
@@ -908,11 +914,29 @@ render_animation(void)
 		return 0;
 
 	if (animate()) {
-		if (anim.curr >= tx_anim_len) {
-			tx_anim_len = anim.curr+1;
-			tx_anim = realloc(tx_anim, sizeof(SDL_Texture*) * tx_anim_len);
-			tx_anim[anim.curr] = SDL_CreateTextureFromSurface(win.rnd, anim.frame[anim.curr]);
+		/* Pre-decoded frames stay in anim.frame[] (needed for looping);
+		 * we only keep ANIM_TEX_SLOTS textures and refresh the slot of
+		 * the current frame from its surface. Same runtime cost as
+		 * before (SDL_UpdateTexture copies the pixels once, which is
+		 * exactly what CreateTextureFromSurface did) but memory for the
+		 * background no longer grows with the GIF's frame count. */
+		if (!tx_anim) {
+			tx_anim_len = ANIM_TEX_SLOTS;
+			tx_anim = calloc(tx_anim_len, sizeof(SDL_Texture*));
+			assert(tx_anim);
+			SDL_Surface *s0 = anim.frame[0];
+			for (int i = 0; i < tx_anim_len; i++) {
+				tx_anim[i] = SDL_CreateTexture(win.rnd,
+					s0->format->format,
+					SDL_TEXTUREACCESS_STREAMING,
+					s0->w, s0->h);
+				assert(tx_anim[i]);
+			}
 		}
+
+		SDL_Surface *srf = anim.frame[anim.curr];
+		SDL_UpdateTexture(tx_anim[anim.curr % ANIM_TEX_SLOTS], NULL,
+		                  srf->pixels, srf->pitch);
 		return 1;  /* frame advanced */
 	}
 
@@ -944,7 +968,7 @@ render(void)
 		SDL_SetRenderTarget(win.rnd, win.txt_background);
 		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 0);
 		SDL_RenderClear(win.rnd);
-		SDL_RenderCopy(win.rnd, tx_anim[anim.curr], 0, 0);
+		SDL_RenderCopy(win.rnd, tx_anim[anim.curr % ANIM_TEX_SLOTS], 0, 0);
 		/* Dark overlay for readability */
 		SDL_SetRenderDrawColor(win.rnd, 0, 0, 0, 255*alpha);
 		SDL_RenderFillRect(win.rnd, 0);
