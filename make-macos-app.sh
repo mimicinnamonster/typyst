@@ -40,7 +40,7 @@ if [ -f "$BG_FILE" ]; then
     BG_ARGS=(-a "$BG_FILE")
 fi
 
-"$DIR/typyst-bin" -p 60 -t 0.80 "${BG_ARGS[@]}" /bin/zsh -c \
+exec "$DIR/typyst-bin" -p 60 -t 0.80 "${BG_ARGS[@]}" /bin/zsh -c \
     'clear; tmux attach 2>/dev/null || tmux new; while tmux has-session 2>/dev/null; do tmux attach 2>/dev/null; sleep 1; done'
 LAUNCHER
 chmod +x "${MACOS}/typyst"
@@ -73,6 +73,12 @@ cat > "${CONTENTS}/Info.plist" << PLIST
     <string>icon</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCalendarsUsageDescription</key>
+    <string>typyst needs calendar access so terminal tools (like ical) can read and manage your calendars.</string>
+    <key>NSCalendarsFullAccessUsageDescription</key>
+    <string>typyst needs full calendar access so terminal tools (like ical) can read and manage your calendars.</string>
+    <key>NSCalendarsWriteAccessUsageDescription</key>
+    <string>typyst needs to write to your calendars so terminal tools (like ical) can create and edit events.</string>
 </dict>
 </plist>
 PLIST
@@ -95,9 +101,14 @@ if [ -f "$ICON_SRC" ]; then
     rm -rf "$ICONSET"
 fi
 
+# Ad-hoc sign so macOS TCC treats typyst as a proper responsible app
+# (required for permission prompts like Calendar/Contacts to appear)
+codesign --force --deep --sign - "${APP_DIR}" || echo "warning: codesign failed, continuing"
+
 # Copy to /Applications so Spotlight/Launchpad can find it
 rm -rf "/Applications/${APP_DIR}"
 cp -R "${APP_DIR}" "/Applications/${APP_DIR}"
+codesign --force --deep --sign - "/Applications/${APP_DIR}" || true
 
 # Register with LaunchServices so open/Finder recognises the app
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_DIR}" &>/dev/null || true
