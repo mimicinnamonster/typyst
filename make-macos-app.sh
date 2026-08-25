@@ -101,17 +101,74 @@ if [ -f "$ICON_SRC" ]; then
     rm -rf "$ICONSET"
 fi
 
-# Ad-hoc sign so macOS TCC treats typyst as a proper responsible app
-# (required for permission prompts like Calendar/Contacts to appear)
-codesign --force --deep --sign - "${APP_DIR}" || echo "warning: codesign failed, continuing"
+# Sign with a stable identity so macOS TCC treats typyst as a proper
+# responsible app (required for permission prompts like Calendar/Contacts).
+# Using the 'Typyst Dev' self-signed cert (see setup-codesign.sh) means Full
+# Disk Access grants survive rebuilds — they are keyed to the cert, not the
+# binary hash. Falls back to ad-hoc if the cert is missing.
+SIGNER=""
+# Note: no -v flag — self-signed certs show up as 'not trusted' with -v,
+# but codesign still accepts them for local use.
+if security find-identity -p codesigning 2>/dev/null | grep -q '"Typyst Dev"'; then
+    SIGNER="Typyst Dev"
+else
+    echo "warning: 'Typyst Dev' identity not found — using ad-hoc signing."
+    echo "        TCC grants (Full Disk Access) will break on every rebuild."
+    echo "        Run: sh setup-codesign.sh  (one-time)"
+fi
 
-# Copy to /Applications so Spotlight/Launchpad can find it
-rm -rf "/Applications/${APP_DIR}"
-cp -R "${APP_DIR}" "/Applications/${APP_DIR}"
-codesign --force --deep --sign - "/Applications/${APP_DIR}" || true
+if [ -n "$SIGNER" ]; then
+    codesign --force --deep --sign "$SIGNER" "${APP_DIR}" || { echo "error: codesign failed"; exit 1; }
+else
+    codesign --force --deep --sign - "${APP_DIR}" || echo "warning: codesign failed, continuing"
+fi
 
-# Register with LaunchServices so open/Finder recognises the app
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_DIR}" &>/dev/null || true
+# Copy to /Applications so Spotlight/Launchpad can find it.
+# TCC grants (Full Disk Access etc.) are keyed to the code signature, so a
+# re-sign invalidates them. Skip the copy when the binary is unchanged.
+INSTALL_BIN="/Applications/${APP_DIR}/Contents/MacOS/typyst"
+NEW_HASH=$(md5 -q "${APP_DIR}/Contents/MacOS/typyst-bin")
+OLD_HASH=$( [ -f "$INSTALL_BIN" ] && md5 -q "$INSTALL_BIN" )
+
+if [ "$NEW_HASH" = "$OLD_HASH" ]; then
+    echo "Binary unchanged, skipping /Applications update (TCC grants preserved)"
+else
+    rm -rf "/Applications/${APP_DIR}"
+    cp -R "${APP_DIR}" "/Applications/${APP_DIR}"
+    if [ -n "$SIGNER" ]; then
+        codesign --force --deep --sign "$SIGNER" "/Applications/${APP_DIR}" || { echo "error: codesign failed"; exit 1; }
+    else
+        codesign --force --deep --sign - "/Applications/${APP_DIR}" || true
+    fi
+
+    # Register with LaunchServices so open/Finder recognises the app
+    /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "/Applications/${APP_DIR}" &>/dev/null || true
+
+    if [ -n "$SIGNER" ]; then
+        echo "Binary changed — installed with stable signature, TCC grants should be preserved."
+    else
+        cat << 'EOF'
+
+================================ WARNING =================================
+Binary changed and app was signed AD-HOC — your TCC grants (Full Disk
+Access) for typyst are now INVALID and must be re-added, or Desktop/
+Documents access will fail silently.
+
+To do so:
+  1. System Settings → Privacy & Security → Full Disk Access
+  2. Remove old "typyst" entry, add /Applications/typyst.app, toggle ON
+  3. Fully quit typyst (Cmd+Q) and run:  tmux kill-server
+  4. Relaunch typyst
+
+Alternatively reset first (needs sudo):
+  sudo tccutil reset SystemPolicyAllFiles com.pixzor.typyst
+  sudo tccutil reset SystemPolicyDesktopFolder com.pixzor.typyst
+
+Fix forever: run 'sh setup-codesign.sh' once, then rebuild.
+=========================================================================
+EOF
+    fi
+fi
 
 echo "Created ${APP_DIR}"
 echo "Installed to /Applications/${APP_DIR}"
