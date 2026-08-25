@@ -1,6 +1,12 @@
 /* See LICENSE.md for license details. */
 
-static char *font = "Ubuntu Mono:pixelsize=18:antialias=true:autohint=true";
+/*
+ * Menlo is the fallback for symbols Ubuntu Mono lacks (arrows ↑↓, blocks,
+ * box-drawing, math). It is deliberately placed before the generic fallback
+ * fontconfig would pick (Apple Symbols on macOS), whose arrow glyphs are thin
+ * and light. Menlo's arrows have noticeably heavier shafts.
+ */
+static char *font = "Ubuntu Mono,Menlo:pixelsize=18:antialias=true:autohint=true";
 static char *font2 = "Apple Color Emoji";
 float alpha = 0.8;
 
