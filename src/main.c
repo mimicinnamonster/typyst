@@ -247,6 +247,7 @@ loadfont(Font *f, FcPattern *pattern)
 
 	#ifdef DEBUG
 	printf("loading font file: %s, font size: %f, index: %d\n", filepath, usedfontsize, fontindex);
+	fflush(stdout); /* _exit(0) on tty EOF skips stdio flushes */
 	#endif
 
 	f->ttf = TTF_OpenFontIndex(filepath, usedfontsize, fontindex);
@@ -526,6 +527,7 @@ selectglyphfont(Glyph g)
 		FcCharSet *charset = FcCharSetCreate();
 		#ifdef DEBUG
 		printf("looking for font with char %d\n", g.u);
+		fflush(stdout);
 		#endif
 		FcCharSetAddChar(charset, g.u);
 		FcPatternAdd(pattern, FC_CHARSET, (FcValue){ .type = FcTypeCharSet, .u = { .c = charset } }, 1);
