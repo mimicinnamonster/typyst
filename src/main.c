@@ -1090,7 +1090,20 @@ kmap(SDL_KeyboardEvent *ev)
 		if (ev->keysym.sym != kp->key)
 			continue;
 
-		if (kp->mode != 0xffffffff && !(ev->keysym.mod & kp->mode))
+		/* Normalize: SDL reports left/right-specific modifier bits (e.g. KMOD_LALT,
+		 * KMOD_RALT) while config.h key masks use the combined macros (KMOD_ALT =
+		 * LALT|RALT). Collapse the physical side into the aggregate "any" bit so
+		 * exact matching works regardless of which Option/Shift/Ctrl key was used. */
+		SDL_Keymod kpmod = (SDL_Keymod)(
+		    ((ev->keysym.mod & (KMOD_LSHIFT|KMOD_RSHIFT)) ? KMOD_SHIFT : 0) |
+		    ((ev->keysym.mod & (KMOD_LCTRL |KMOD_RCTRL))  ? KMOD_CTRL  : 0) |
+		    ((ev->keysym.mod & (KMOD_LALT  |KMOD_RALT))   ? KMOD_ALT   : 0) |
+		    ((ev->keysym.mod & (KMOD_LGUI  |KMOD_RGUI))   ? KMOD_GUI   : 0));
+
+		/* Exact modifier match on the four interactive keymods. Lock-key bits
+		 * (Caps/Num) never make it into kpmod, and the 0xffffffff sentinel in
+		 * config.h still means "match any modifier". */
+		if (kp->mode != 0xffffffff && kpmod != kp->mode)
 			continue;
 
 		#ifdef DEBUG
@@ -1159,7 +1172,7 @@ handle_keypress(SDL_Event *ev)
 	}
 
 	unsigned char keysz = 1;
-	char buf[8] = { ev->key.keysym.sym };
+	char buf[16] = { ev->key.keysym.sym };
 
 	int isctrl = ev->key.keysym.mod & KMOD_CTRL;
 	int isshift = ev->key.keysym.mod & KMOD_SHIFT;
@@ -1196,7 +1209,20 @@ handle_keypress(SDL_Event *ev)
 		}
 		if (isletter) {
 			if (isctrl) {
-				/* Ctrl(+Shift)+letter: produce control character (same for both).
+				if (isshift) {
+					/* Ctrl+Shift(+Alt)+letter: kitty keyboard protocol CSI-u encoding
+					 * (ESC[<codepoint>;<mod>u, mod = 1 + shift + alt*2 + ctrl*4, so
+					 * 6 for Ctrl+Shift and 8 with Alt). Legacy encoding cannot
+					 * distinguish these from Ctrl+letter; sent unconditionally like
+					 * Ghostty's default (disambiguate) behavior. SDL always sends
+					 * lowercase keysym for letters regardless of shift. */
+					int cp = (buf[0] >= 'A' && buf[0] <= 'Z') ?
+					    buf[0] + ('a' - 'A') : buf[0];
+					keysz = sprintf(buf, "\033[%d;%du", cp, isalt ? 8 : 6);
+					ttywrite(buf, keysz, 1);
+					return;
+				}
+				/* Ctrl+letter: produce control character.
 				 * SDL always sends lowercase keysym for letters regardless of shift. */
 				buf[0] &= 31;
 			}
