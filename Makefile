@@ -19,7 +19,13 @@ EXE = $(BUILD_DIR)/$(NAME)
 
 BASE_CFLAGS = -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE -std=c11 -pedantic # -Werror
 # BASE_LDFLAGS = -Wl,-rpath,\$$ORIGIN
-BASE_LDFLAGS =
+# sdl2-compat dlopens SDL3 by bare soname at load time and aborts the process
+# if it is not found ("fatal error: cannot load sdl3"). The brew sdl3 dylibs
+# live under $(brew --prefix sdl3)/lib, not the flat /opt/homebrew/lib, so give
+# dyld an explicit absolute rpath that does not depend on sdl2-compat's
+# relative Cellar rpath or on ambient DYLD_* environment.
+SDL3_LIBDIR = `brew --prefix sdl3`/lib
+BASE_LDFLAGS = -Wl,-rpath,$(SDL3_LIBDIR)
 
 DEBUG_CFLAGS = -ggdb -Wall -Wextra -fsanitize=address # -fsanitize=undefined # -fprofile-arcs -ftest-coverag
 DEBUG_LDFLAGS = -fsanitize=address # -fsanitize=undefined # -fprofile-arcs -ftest-coverage
