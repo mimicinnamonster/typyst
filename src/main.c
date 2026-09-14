@@ -421,6 +421,14 @@ init(void)
 	if (!FcInit()) die("could not init fontconfig.\n");
 	if (TTF_Init() == -1) die("could not init sdl_ttf.\n");
 
+#ifdef __APPLE__
+	/* SDL3 (via sdl2-compat, since upstream ebd059e) swallows KEYDOWN for keys the
+	 * macOS IME consumes (e.g. Opt+n => dead tilde), so Alt+letter never reaches us
+	 * and can't be encoded as ESC+letter. Ask SDL3 to treat Option as Alt ("both")
+	 * and skip IME composition for Option combos. No-op on real SDL2 (SDL3 >= 3.2.0). */
+	SDL_SetHint("SDL_MAC_OPTION_AS_ALT", "both");
+#endif
+
 	SDL_StartTextInput();
 
 	win.ttyfd = ttynew(opt_line, shell, opt_io, opt_cmd);
