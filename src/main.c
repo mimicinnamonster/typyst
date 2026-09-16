@@ -413,6 +413,8 @@ loadfontset(FcPattern *pattern)
 	return 1;
 }
 
+static int mouse_debug(void);
+
 void
 init(void)
 {
@@ -471,6 +473,16 @@ init(void)
 
 	resize(win.w, win.h);
 	ttyresize(cols, rows);
+
+	if (mouse_debug()) {
+		SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+		SDL_GetWindowSize(win.wnd, &win_w, &win_h);
+		fprintf(stderr, "[mouse] init window=(%dx%d pts) "
+				"renderer-output=(%dx%d px) cw=%d ch=%d tw=%d th=%d "
+				"pad=%d\n",
+				win_w, win_h, draw_w, draw_h,
+				win.cw, win.ch, win.tw, win.th, winpad);
+	}
 
 	win.mode = MODE_NUMLOCK;
 
@@ -1311,6 +1323,287 @@ handle_textinput(SDL_Event *ev)
 	#endif
 }
 
+static unsigned int mbuttons; /* bit field of pressed mouse buttons */
+
+/* SDL mouse events report window coordinates in points, but the renderer
+ * and every win.* cell metric work in device pixels: init() reloads fonts
+ * at the HiDPI scale and sizes the window from SDL_GetRendererOutputSize,
+ * and handle_window() resizes the grid from the renderer output too.
+ * Convert event points to device pixels before mapping to cells, otherwise
+ * clicks land at a fraction of the clicked cell on HiDPI displays (row 0
+ * stays correct while the error grows with depth). */
+static int
+mousetopixel(int v)
+{
+	int draw_w, draw_h, win_w, win_h;
+	float scale;
+
+	SDL_GetRendererOutputSize(win.rnd, &draw_w, &draw_h);
+	SDL_GetWindowSize(win.wnd, &win_w, &win_h);
+	if (win_w < 1 || win_h < 1 || draw_w < 1)
+		return v;
+	scale = (float)draw_w / (float)win_w;
+	return (int)(v * scale);
+}
+
+/* Map an SDL window coordinate (points) to a terminal column. */
+static int
+evcol(int x)
+{
+	x = mousetopixel(x);
+	x -= winpad;
+	LIMIT(x, 0, win.tw - 1);
+	return x / win.cw;
+}
+
+/* Map an SDL window coordinate (points) to a terminal row. */
+static int
+evrow(int y)
+{
+	y = mousetopixel(y);
+	y -= winpad;
+	LIMIT(y, 0, win.th - 1);
+	return y / win.ch;
+}
+
+/* Runtime mouse diagnostics, enabled with TYPUST_MOUSE_DEBUG=1 in the
+ * environment. */
+static int
+mouse_debug(void)
+{
+	static int enabled = -1;
+
+	if (enabled < 0)
+		enabled = getenv("TYPUST_MOUSE_DEBUG") != NULL;
+	return enabled;
+}
+
+/* Compact "X10 BTN MOT MANY SGR" summary of the active mouse-reporting
+ * modes, '-' where a mode is off. */
+static void
+mousemodestr(char *buf, size_t len)
+{
+	snprintf(buf, len, "%s %s %s %s %s",
+			IS_SET(MODE_MOUSEX10) ? "X10" : "-",
+			IS_SET(MODE_MOUSEBTN) ? "BTN" : "-",
+			IS_SET(MODE_MOUSEMOTION) ? "MOT" : "-",
+			IS_SET(MODE_MOUSEMANY) ? "MANY" : "-",
+			IS_SET(MODE_MOUSESGR) ? "SGR" : "-");
+}
+
+/* Cell-grid metrics snapshot for the [mouse] debug lines. */
+static void
+mousemetrics(char *buf, size_t len)
+{
+	snprintf(buf, len, "cw=%d ch=%d pad=%d tw=%d th=%d",
+			win.cw, win.ch, winpad, win.tw, win.th);
+}
+
+/* Encode a mouse event as an ANSI mouse report and write it to the tty,
+ * mirroring upstream st's mousereport() adapted from X11 to SDL. The
+ * DECSET modes parsed in st.c decide which events are encoded and how:
+ *   mode 9    (MODE_MOUSEX10)    presses only, X10 byte format
+ *   mode 1000 (MODE_MOUSEBTN)    presses and releases
+ *   mode 1002 (MODE_MOUSEMOTION) motion while a button is held
+ *   mode 1003 (MODE_MOUSEMANY)   all motion
+ *   mode 1006 (MODE_MOUSESGR)    SGR extended format instead of the
+ *                                classic ESC[M three-byte encoding
+ * `button` is an X11-style button number (1-3 and 8-11 mouse buttons,
+ * 4-7 scroll wheel).  Returns 1 when a report was written. */
+static int
+mousereport(int type, int button, int x, int y, SDL_Keymod mods)
+{
+	int len, btn, code;
+	char buf[40];
+	static int ox, oy;
+
+	if (type == SDL_MOUSEMOTION) {
+		if (x == ox && y == oy)
+			return 0;
+		if (!IS_SET(MODE_MOUSEMOTION) && !IS_SET(MODE_MOUSEMANY))
+			return 0;
+		/* MODE_MOUSEMOTION: no reporting if no button is pressed */
+		if (IS_SET(MODE_MOUSEMOTION) && mbuttons == 0)
+			return 0;
+		/* Set btn to lowest-numbered pressed button, or 12 if no
+		 * buttons are pressed. */
+		for (btn = 1; btn <= 11 && !(mbuttons & (1 << (btn-1))); btn++)
+			;
+		code = 32;
+	} else {
+		btn = button;
+		/* Only buttons 1 through 11 can be encoded */
+		if (btn < 1 || btn > 11)
+			return 0;
+		if (type == SDL_MOUSEBUTTONUP) {
+			/* MODE_MOUSEX10: no button release reporting */
+			if (IS_SET(MODE_MOUSEX10))
+				return 0;
+			/* Don't send release events for the scroll wheel */
+			if (btn == 4 || btn == 5)
+				return 0;
+		}
+		code = 0;
+	}
+
+	ox = x;
+	oy = y;
+
+	/* Encode btn into code. If no button is pressed for a motion event
+	 * in MODE_MOUSEMANY, then encode it as a release. */
+	if ((!IS_SET(MODE_MOUSESGR) && type == SDL_MOUSEBUTTONUP) || btn == 12)
+		code += 3;
+	else if (btn >= 8)
+		code += 128 + btn - 8;
+	else if (btn >= 4)
+		code += 64 + btn - 4;
+	else
+		code += btn - 1;
+
+	if (!IS_SET(MODE_MOUSEX10)) {
+		code += ((mods & KMOD_SHIFT) ?  4 : 0)
+		      + ((mods & KMOD_ALT)   ?  8 : 0) /* meta key: alt */
+		      + ((mods & KMOD_CTRL)  ? 16 : 0);
+	}
+
+	if (IS_SET(MODE_MOUSESGR)) {
+		len = snprintf(buf, sizeof(buf), "\033[<%d;%d;%d%c",
+				code, x+1, y+1,
+				type == SDL_MOUSEBUTTONUP ? 'm' : 'M');
+	} else if (x < 223 && y < 223) {
+		len = snprintf(buf, sizeof(buf), "\033[M%c%c%c",
+				32+code, 32+x+1, 32+y+1);
+	} else {
+		return 0;
+	}
+
+	ttywrite(buf, len, 0);
+	if (mouse_debug()) {
+		char mm[32];
+
+		mousemodestr(mm, sizeof(mm));
+		fprintf(stderr, "[mouse] report type=%d btn=%d code=%d len=%d "
+				"bytes=\"%.*s\" modes[%s]\n",
+				type, btn, code, len, len, buf, mm);
+	}
+	return 1;
+}
+
+/* SDL button press/release. Sends a report only when the application
+ * enabled a mouse mode; the pressed-button bit field is tracked always
+ * because motion reporting (1002/1003) encodes which button is held. */
+void
+handle_mousebutton(SDL_Event *ev)
+{
+	int btn = ev->button.button;
+	int x = evcol(ev->button.x);
+	int y = evrow(ev->button.y);
+
+	/* Map SDL buttons to the X11 button numbering the encoding expects;
+	 * X11 reserves buttons 4-7 for the scroll wheel, which arrives here
+	 * as SDL_MOUSEWHEEL events instead. */
+	switch (btn) {
+	case SDL_BUTTON_LEFT:   btn = 1; break;
+	case SDL_BUTTON_MIDDLE: btn = 2; break;
+	case SDL_BUTTON_RIGHT:  btn = 3; break;
+	case SDL_BUTTON_X1:     btn = 8; break;
+	case SDL_BUTTON_X2:     btn = 9; break;
+	default: return;
+	}
+
+	if (ev->type == SDL_MOUSEBUTTONDOWN)
+		mbuttons |= 1 << (btn - 1);
+	else if (ev->type == SDL_MOUSEBUTTONUP)
+		mbuttons &= ~(1 << (btn - 1));
+
+	/* Mirror X11's implicit grab: while a button is held, capture the mouse
+	 * so releases and motion keep arriving when the cursor leaves the window
+	 * mid-drag; otherwise the pressed-button bit field sticks. */
+	SDL_CaptureMouse(mbuttons ? SDL_TRUE : SDL_FALSE);
+
+	if (mouse_debug()) {
+		char mm[32], mt[80];
+
+		mousemodestr(mm, sizeof(mm));
+		mousemetrics(mt, sizeof(mt));
+		fprintf(stderr, "[mouse] %s btn=%d px=(%d,%d) cell=(%d,%d) "
+				"held=0x%x modes[%s] %s\n",
+				ev->type == SDL_MOUSEBUTTONDOWN ? "DOWN" : "UP",
+				btn, ev->button.x, ev->button.y, x, y,
+				mbuttons, mm, mt);
+	}
+
+	if (IS_SET(MODE_MOUSE))
+		mousereport(ev->type, btn, x, y, SDL_GetModState());
+}
+
+void
+handle_mousemotion(SDL_Event *ev)
+{
+	int x = evcol(ev->motion.x);
+	int y = evrow(ev->motion.y);
+
+	if (mouse_debug()) {
+		char mm[32], mt[80];
+
+		mousemodestr(mm, sizeof(mm));
+		mousemetrics(mt, sizeof(mt));
+		fprintf(stderr, "[mouse] MOTION px=(%d,%d) cell=(%d,%d) held=0x%x "
+				"modes[%s] %s\n",
+				ev->motion.x, ev->motion.y, x, y, mbuttons, mm, mt);
+	}
+	if (IS_SET(MODE_MOUSE))
+		mousereport(SDL_MOUSEMOTION, 0, x, y, SDL_GetModState());
+}
+
+/* SDL scroll wheel. Each notch is reported as a press+release pair
+ * (mousereport() drops the vertical-wheel releases, exactly like st). */
+void
+handle_mousewheel(SDL_Event *ev)
+{
+	Sint32 wx, wy;
+	Uint32 i;
+	int x, y, px, py;
+
+	SDL_GetMouseState(&px, &py);
+	x = evcol(px);
+	y = evrow(py);
+
+	if (mouse_debug()) {
+		char mm[32], mt[80];
+
+		mousemodestr(mm, sizeof(mm));
+		mousemetrics(mt, sizeof(mt));
+		fprintf(stderr, "[mouse] WHEEL dx=%d dy=%d flipped=%d "
+				"px=(%d,%d) cell=(%d,%d) modes[%s] %s\n",
+				ev->wheel.x, ev->wheel.y,
+				ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED,
+				px, py, x, y, mm, mt);
+	}
+	if (!IS_SET(MODE_MOUSE))
+		return;
+
+	/* Normalize natural scrolling so that wy > 0 means "wheel up" like
+	 * X11 Button4 (and wx > 0 means "wheel right"). */
+	wx = (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) ?
+	     -ev->wheel.x : ev->wheel.x;
+	wy = (ev->wheel.direction == SDL_MOUSEWHEEL_FLIPPED) ?
+	     -ev->wheel.y : ev->wheel.y;
+
+	for (i = 0; i < (Uint32)abs(wy); i++) {
+		mousereport(SDL_MOUSEBUTTONDOWN, wy > 0 ? 4 : 5, x, y,
+		            SDL_GetModState());
+		mousereport(SDL_MOUSEBUTTONUP, wy > 0 ? 4 : 5, x, y,
+		            SDL_GetModState());
+	}
+	for (i = 0; i < (Uint32)abs(wx); i++) {
+		mousereport(SDL_MOUSEBUTTONDOWN, wx > 0 ? 7 : 6, x, y,
+		            SDL_GetModState());
+		mousereport(SDL_MOUSEBUTTONUP, wx > 0 ? 7 : 6, x, y,
+		            SDL_GetModState());
+	}
+}
+
 static int quit_requested = 0;
 
 int
@@ -1339,6 +1632,16 @@ read_events(void)
 				break;
 			case SDL_KEYDOWN:
 				handle_keypress(&event);
+				break;
+			case SDL_MOUSEBUTTONDOWN:
+			case SDL_MOUSEBUTTONUP:
+				handle_mousebutton(&event);
+				break;
+			case SDL_MOUSEMOTION:
+				handle_mousemotion(&event);
+				break;
+			case SDL_MOUSEWHEEL:
+				handle_mousewheel(&event);
 				break;
 			case SDL_WINDOWEVENT:
 				handle_window(&event);

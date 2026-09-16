@@ -26,6 +26,7 @@
 - **GIF backgrounds** — any animated background you like to personalize your terminal and make it truly yours
 - **Better Emojis and Unicode** — renders all emojis and unicode characters in a way that does not distrupt the layout of your terminal application.
 - **Kitty keyboard protocol** — modern key reporting for your fancy editor keybindings.
+- **Mouse reporting** — xterm mouse support: DECSET modes 9/1000/1002/1003/1006 (SGR extended), scroll wheel mapped to buttons 4-7, modifier encoding (shift/alt/ctrl), and Retina-correct click coordinates. `vim` `:set mouse=a`, `tmux` and `less` just work — the terminfo ships the `kmous`/`xm`/`XM` caps.
 - **suckless philosophy** — single-file config (`config.h`), recompile to customise. No bloat, no surprises.
 - **24‑bit colour** — to make all text pretty
 
@@ -76,6 +77,8 @@ Options:
 ```
 
 If no command is given after the options, typyst launches your login shell.
+
+Set `TYPUST_MOUSE_DEBUG=1` to log mouse events and terminal mouse reports to stderr.
 
 ---
 

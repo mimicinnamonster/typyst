@@ -191,6 +191,10 @@ typyst-mono| typyst monocolor,
 	Ms=\E]52;%p1%s;%p2%s\007,
 	Se=\E[2 q,
 	Ss=\E[%p1%d q,
+# Mouse extensions: SGR (1006) mouse encoding (xm) and the mouse-mode
+# toggle cap (XM), matching xterm-256color
+	xm=\E[<%i%p1%d;%p2%d;%p3%d;%?%p4%tM%em%;,
+	XM=\E[?1006;1000%?%p1%{1}%=%th%el%;,
 
 typyst| typyst,
 	use=typyst-mono,
