@@ -84,6 +84,11 @@ const RenderColor colorname[] = {
 unsigned int defaultfg = 7;
 unsigned int defaultbg = 256;
 
+/* cursor blink phase period in ms (st default 800), 0 = steady cursor.
+ * A keypress resets the phase and shows the cursor solid (see
+ * resetcursorblink), so this only governs the idle blink rate. */
+unsigned int blinktimeout = 800;
+
 // TODO: remove this
 //static unsigned int defaultrcs = 257;
 

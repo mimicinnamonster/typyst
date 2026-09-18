@@ -485,6 +485,8 @@ init(void)
 	}
 
 	win.mode = MODE_NUMLOCK;
+	win.cursoron = 1; /* solid until the first blink tick */
+	win.lastblink = 0;
 
 	if (opt_anim)
 		initanim(opt_anim);
@@ -1019,18 +1021,41 @@ render(void)
 void
 drawcursor(int cx, int cy, Glyph g, int ox, int oy, Glyph og)
 {
+	/* restore the cell under the previous cursor position first, even
+	 * when the cursor is hidden (DECTCEM): drawglyph only stamps into the
+	 * persistent win.glyphs[] array, so a swapped glyph left here stays
+	 * on screen as a ghost until the row is fully redrawn */
+	drawglyph(og, ox, oy);
+
 	if (win.mode & MODE_HIDE) {
 		return;
 	}
 
-	int tmp = g.fg;
-	g.fg = g.bg;
-	g.bg = tmp;
-	drawglyph(g, cx, cy);
+	if (!win.cursoron) {
+		/* blink-off phase: stamp the cell content verbatim so the
+		 * cursor vanishes without disturbing the glyph */
+		drawglyph(g, cx, cy);
+		return;
+	}
 
-	// refresh old cursor's cell
-	if (cx != ox || cy != oy)
-		drawglyph(og, ox, oy);
+	/* Invert the RENDERED colors: selectglyphcolors() swaps fg/bg at
+	 * render time for cells carrying ATTR_REVERSE (and collapses fg/bg
+	 * for ATTR_INVISIBLE/ATTR_BLINK), so strip those attrs and swap the
+	 * stored pair once — except on reverse cells, where the renderer has
+	 * already swapped: stamping the stored pair as-is there still yields
+	 * a distinct block, while re-swapping would cancel the highlight's
+	 * inversion and render the cursor as plain text (no visible blink on
+	 * vim MatchParen/Error cells). */
+	{
+		int rev = (g.mode & ATTR_REVERSE) != 0;
+		g.mode &= ~(ATTR_REVERSE | ATTR_INVISIBLE | ATTR_BLINK);
+		if (!rev) {
+			uint32_t tmp = g.fg;
+			g.fg = g.bg;
+			g.bg = tmp;
+		}
+	}
+	drawglyph(g, cx, cy);
 }
 
 void
@@ -1616,6 +1641,15 @@ read_events(void)
 	 * cutting wakeups from ~60/s to just the GIF's frame rate. */
 	int timeout_ms = opt_anim ? anim_next_frame_ms() : (1000 / opt_fps);
 
+	/* Wake up right when the next cursor blink phase is due. */
+	if (blinktimeout && !(win.mode & MODE_HIDE)) {
+		unsigned int elapsed = SDL_GetTicks() - win.lastblink;
+		unsigned int to_blink = (elapsed >= blinktimeout) ?
+		                        0 : blinktimeout - elapsed;
+		if (to_blink < (unsigned int)timeout_ms)
+			timeout_ms = (int)to_blink;
+	}
+
 	int has_event = SDL_WaitEventTimeout(&event, timeout_ms);
 
 	SDL_LockMutex(mutex);
@@ -1629,9 +1663,11 @@ read_events(void)
 				break;
 			case SDL_TEXTINPUT:
 				handle_textinput(&event);
+				resetcursorblink();
 				break;
 			case SDL_KEYDOWN:
 				handle_keypress(&event);
+				resetcursorblink();
 				break;
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
@@ -1652,6 +1688,11 @@ read_events(void)
 			}
 		} while (SDL_PollEvent(&event));
 	}
+
+	/* Flip the cursor blink phase when the period elapsed — the capped
+	 * wait timeout above wakes us right at the deadline. Must run under
+	 * the mutex: draw() touches term and win. */
+	cursorblink();
 
 	/* Reader thread may push a new wake event for the next batch */
 	wake_pending = 0;

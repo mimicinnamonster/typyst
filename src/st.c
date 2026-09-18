@@ -32,6 +32,8 @@
 
 int syncd_output = 0; /* DEC private mode 2026 — Synchronized Output */
 
+extern TermWindow win; /* defined in main.c */
+
 /* Arbitrary sizes */
 #define UTF_INVALID   0xFFFD
 #define UTF_SIZ       4
@@ -2351,6 +2353,38 @@ draw(void)
 	term.ocx = cx;
 	term.ocy = term.c.y;
 	finishdraw();
+}
+
+void
+cursorblink(void)
+{
+	if (!blinktimeout || (win.mode & MODE_HIDE))
+		return;
+
+	if (SDL_GetTicks() - win.lastblink < blinktimeout)
+		return;
+
+	win.lastblink = SDL_GetTicks();
+	win.cursoron = !win.cursoron;
+	tsetdirt(term.c.y, term.c.y);
+	draw();
+}
+
+/* Solid cursor while the user is typing: restart the blink phase. If the
+ * cursor is currently in the off (invisible) phase, redraw it immediately —
+ * the keystroke's echo keeps the cell painted afterwards. */
+void
+resetcursorblink(void)
+{
+	if (win.mode & MODE_HIDE)
+		return;
+
+	if (!win.cursoron) {
+		win.cursoron = 1;
+		tsetdirt(term.c.y, term.c.y);
+		draw();
+	}
+	win.lastblink = SDL_GetTicks();
 }
 
 void

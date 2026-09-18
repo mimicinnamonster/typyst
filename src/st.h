@@ -81,6 +81,8 @@ typedef union {
 void die(const char *, ...);
 void redraw(void);
 void draw(void);
+void cursorblink(void);
+void resetcursorblink(void);
 
 void printscreen(void);
 void printsel(const Arg *);
@@ -126,6 +128,7 @@ extern char *termname;
 extern unsigned int tabspaces;
 extern unsigned int defaultfg;
 extern unsigned int defaultbg;
+extern unsigned int blinktimeout;
 extern float alpha;
 
 #endif

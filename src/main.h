@@ -49,6 +49,8 @@ typedef struct {
 	int tw, th; /* tty width and height */
 	int mode; /* window state/mode flags */
 	int cursor; /* cursor style */
+	int cursoron; /* cursor blink phase (1 = cursor drawn) */
+	unsigned int lastblink; /* ms timestamp of the last blink phase change */
 	unsigned int lastfocus;
 	int ttyfd;
 	Glyph *glyphs;
