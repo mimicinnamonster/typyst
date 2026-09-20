@@ -929,6 +929,7 @@ tmoveto(int x, int y)
 	term.c.state &= ~CURSOR_WRAPNEXT;
 	term.c.x = LIMIT(x, 0, term.col-1);
 	term.c.y = LIMIT(y, miny, maxy);
+	resetcursorblink();
 }
 
 void
@@ -1193,6 +1194,7 @@ tsetattr(const int *attr, int l)
 			break;
 		}
 	}
+	resetcursorblink();
 }
 
 void
@@ -1804,6 +1806,7 @@ tputtab(int n)
 				/* nothing */ ;
 	}
 	term.c.x = LIMIT(x, 0, term.col-1);
+	resetcursorblink();
 }
 
 void

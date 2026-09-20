@@ -3,3 +3,4 @@ perf.*
 typyst-dbg
 typyst.app
 bgs
+*.log
